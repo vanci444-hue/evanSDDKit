@@ -55,7 +55,7 @@ Projects_Repo/      各项目代码、docs 和 .sdd
 project-registry.json
 ```
 
-平台适配方式见 [平台协议](harness-core/protocols/platform-adapters.md)。开发执行以 [开发循环](harness-core/protocols/development-loop.md) 为准；角色分工见 [协作架构](docs/multi-agent-architecture.md)。
+平台适配方式见 [平台协议](harness-core/protocols/platform-adapters.md)。开发执行以 [开发循环](harness-core/protocols/development-loop.md) 为准。
 
 ## 检查 Harness
 

@@ -190,6 +190,8 @@ def check_templates(root: Path) -> list[str]:
         problems.append("status template: task lists belong in .sdd/tasks.json")
     if tasks is None:
         return problems
+    if "execution_mode" not in tasks or "step_gate" not in tasks:
+        problems.append(f"{task_file}: new plan template must include execution_mode and step_gate")
     sources = tasks.get("source_files")
     if not isinstance(sources, dict) or not all(sources.get(key) for key in ("prd", "tech_spec")):
         problems.append(f"{task_file}: source_files must identify prd and tech_spec")

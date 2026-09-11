@@ -1,6 +1,8 @@
 ---
 name: sdd-bugfix
-description: 定位并修复已有项目的具体缺陷，读取相关需求和技术方案并验证结果。
+description: 修复已有项目中与确认的需求、接口或验收结果不一致的问题，定位根因、实施局部修复并验证。
 ---
 
-读取并遵循 `harness-core/skills/sdd-bugfix/SKILL.md`。本文件只提供平台入口，不维护重复流程。
+本入口所在仓库根目录为 `harness_root`；下面的链接相对于本文件解析。
+
+读取并遵循 [核心 Skill](../../../harness-core/skills/sdd-bugfix/SKILL.md)。执行规则只维护在核心文件中。

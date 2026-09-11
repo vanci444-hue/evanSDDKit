@@ -4,6 +4,13 @@
   "specification": null,
   "created": "",
   "max_retries": 2,
+  "execution_mode": "step_by_step",
+  "step_gate": {
+    "kind": "task_review",
+    "task_id": null,
+    "status": "pending",
+    "user_confirmation": null
+  },
   "source_files": {
     "prd": "docs/PRD.md",
     "tech_spec": "docs/tech-spec.md"

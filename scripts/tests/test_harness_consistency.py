@@ -26,6 +26,8 @@ class HarnessConsistencyTests(unittest.TestCase):
         self.write_json("templates/project/.sdd/project.json", {"specification": None})
         self.write_json("templates/project/.sdd/status.json", {"stage": "initialized"})
         self.tasks = {
+            "execution_mode": "automatic",
+            "step_gate": {"kind": "task_review", "task_id": None, "status": "pending", "user_confirmation": None},
             "specification": None,
             "source_files": {"prd": "docs/PRD.md", "tech_spec": "docs/tech-spec.md"},
             "features": [{"id": "F-001", "title": "Upload a document",
@@ -59,6 +61,17 @@ class HarnessConsistencyTests(unittest.TestCase):
 
     def test_minimal_chain_and_null_specification_are_valid(self) -> None:
         self.run_checker(True)
+
+    def test_new_template_requires_valid_mode_and_step_gate(self) -> None:
+        for change in ("missing_mode", "invalid_mode", "missing_gate", "invalid_gate"):
+            with self.subTest(change=change):
+                plan = deepcopy(self.tasks)
+                if change == "missing_mode": del plan["execution_mode"]
+                elif change == "invalid_mode": plan["execution_mode"] = "fast"
+                elif change == "missing_gate": del plan["step_gate"]
+                else: plan["step_gate"] = False
+                self.write_json("templates/tasks.json", plan)
+                self.run_checker(False)
 
     def test_frontend_stage_can_precede_full_business_acceptance(self) -> None:
         frontend = deepcopy(self.tasks["tasks"][0])

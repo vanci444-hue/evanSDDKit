@@ -1,6 +1,8 @@
 ---
 name: git-workflow
-description: SDD V7_2 Git 工作流：项目 Git 仓库初始化、origin 配置（含 repo_url 记录补配）、提交、推送门禁。触发：仓库配置检查、提交代码、用户验收后推送。
+description: 在用户授权范围内处理目标项目的 Git 初始化、分支、提交、推送与合并；支持独立仓库和 worktree，不作为每个开发任务的开工门禁。
 ---
 
-完整定义见 `harness-core/skills/git-workflow/SKILL.md`（唯一真相源）：初始化、提交、推送的门禁与降级路径一律以该文件为准。主要由开发循环推送门禁调用；主对话说"提交 / 推送 / 配仓库"亦可进入。本文件只提供本平台加载入口。
+本入口所在仓库根目录为 `harness_root`；下面的链接相对于本文件解析。
+
+读取并遵循 [核心 Skill](../../../harness-core/skills/git-workflow/SKILL.md)。执行规则只维护在核心文件中。

@@ -27,6 +27,8 @@
 
 ## 调度规则
 
+两种 [推进模式](execution-mode.md) 都保留本门禁。`step_gate` 只管理逐任务确认，不覆盖本 `user_gate`；同一任务同时触发时合并向用户交接，分别记录满足的条件。用户指定前端返工时，逐步模式按 rework_task_ids 一次放行一个任务。
+
 每次派发 Developer 或 Tester 前，运行只读检查：`scripts/sdd_dispatch.py --tasks <active_project_path>/.sdd/tasks.json`（脚本路径：`<harness_root>/scripts/sdd_dispatch.py`）。只读取这个 JSON，不搜索项目、不调用外部服务；输出门禁状态、开发/验收候选和原因。候选仍须检查名额、写入范围、版本、运行端口与测试数据冲突。本脚本不自动启动智能体，也不自行确认门禁。
 
 1. 门禁前：前端与独立后端可以并行，正常派发其 Developer/Tester；真实联调和交付任务必须等门禁通过，不能抢跑。

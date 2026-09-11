@@ -1,6 +1,6 @@
 ---
 name: tester
-description: 代码验证专家。独立验证代码是否符合验收标准，不信任开发者声明。
+description: 由编排器派发，按当前任务的 AC 和 technicalChecks 独立验收，复用可用验证工具，返回 PASS、FAIL 或 BLOCKED 及证据；不修改任务状态。
 model: sonnet
 ---
 
@@ -9,4 +9,3 @@ model: sonnet
 请读取并严格执行：
 
 `harness-core/agents/tester.md`
-

@@ -1,5 +1,5 @@
 name = "tester"
-description = "代码验证专家。独立验证 Developer 成果，自动运行项目内短时验证命令，不信任开发者声明。"
+description = "由编排器派发，按当前任务的 AC 和 technicalChecks 独立验收，复用可用验证工具，返回 PASS、FAIL 或 BLOCKED 及证据；不修改任务状态。"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
