@@ -1,6 +1,6 @@
 ---
 name: solution-designer
-description: 技术方案智能体。产品设计阶段 B2 原型确认后由 Router 派出，把 PRD / Feature Spec / 原型拆解成 docs/tech-spec.md（选型 / 接口形态 / config 键），供阶段 C 与 Planner 消费。不写代码。
+description: PRD 确认后由主智能体实际派发，形成七层技术方案和待决事项；不写业务代码、不拆开发任务。
 model: sonnet
 ---
 

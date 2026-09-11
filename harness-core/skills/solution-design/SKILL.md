@@ -1,50 +1,57 @@
+---
+name: solution-design
+description: 将已确认的需求与验收拆成七层技术方案，明确接口、数据、模型、算法、异常和目录，为任务规划与开发提供依据。
+---
 
-# 技术方案设计（阶段 TS）
+# 七层技术方案
 
-你是 SDD V7_2 的技术方案设计助手，以 solution-designer 子智能体身份工作（定义见 `harness-core/agents/solution-designer.md`）。
+承接阶段 A 的需求定义，通过七层对齐形成供界面设计与 Plan 消费的方案；
+输入为目标项目路径、已确认的 `docs/PRD.md` 和已有原型（如有）。
+注意，不要提前拆分Feature。
+## 执行入口
 
-## 职责
+主智能体进入本 Skill 时，先按 [子智能体协议](../../protocols/codex-subagents.md) 实际派发 `solution-designer`，取得实例标识；传入项目路径、已确认 PRD、设计范围、配置/规范选择及允许改动的文档。仅阅读本 Skill 不算启动。已作为 Solution Designer 子智能体执行时直接进行下述步骤，不再次派发自己。关键问题交主智能体沟通，主智能体将用户选择回传同一实例（已结束时带既有成果恢复），不自行接管设计。能力不可用仅按协议显式降级。
 
-拿到已确认的产品设计产物（`docs/PRD.md`、`docs/feature-map.md`、`docs/domain-model.md`、`docs/features/*/spec.md`、`docs/prototypes/`），拆解成一份技术方案，落盘 `docs/tech-spec.md`。方案的目标质量线：**阶段 C 生成 api-contracts 与 Planner 拆任务拿到这份方案，零追问即可开工。**
+## 一、读取必要上下文
 
-## 拆解方法（三步）
+- 核对 `.sdd/project.json` 的项目身份、类型和 `specification`，复用已确认的选择。值为 `null` 时不读取规范集；字段缺失时只补问选择，不回退 `default`。
+- PRD 尚未确认时返回 [需求与验收](../sdd-product-design/phase-A.md)。已有原型只读取相关界面；没有原型不阻塞技术方案。
+- 使用规范集时，只读此次选型、接口和环境涉及的文件。所选集缺失或与用户要求冲突时说明具体问题，不改用另一套框架。
 
-1. **原型 + Feature Spec → 页面/功能矩阵**：页面清单从已确认原型继承——原型里画出来的页面就是页面清单，不自行增删；再逐条 Feature / AC 映射到页面。每个页面列出：路由、承载的 Feature ID / AC ID、内容、调用哪些接口。Feature Spec 明确不要的项不得出现在矩阵中。
-2. **功能矩阵 + Domain Model → 接口清单**：每个 Feature 的业务动作逐个设计路由 + Pydantic 请求/响应模型（这是「接口定义即代码」在方案层的表达——模型定清楚，代码层照抄），并分配 `API-Fxxx-xx` 编号供 api-contracts 继承。响应统一走 pycore 信封（`success_response` / `error_response`，条款见 `specification/<集>/backend/api-design.md`）；资源词从 PRD / Feature Map 的名词实体推导（动词不单独成资源），路由文件一律 `backend/src/api/routes/<资源复数>.py`（同文件「路由文件位置与命名」条款）。
-3. **接口清单 → config 键清单**：方案中出现的所有技术参数（超时、分页大小、模型名）和业务数字（限额、阈值、配额），全部落成 config 键名。这是「值与选型的单一权威源」条款的落地载体——代码零硬编码的预检从 config 键清单开始。
+## 二、按七层形成方案
 
-## 硬引用规范（只引路径 + 圈消费范围，永不复制内容）
+使用 [方案结构](references/tech-spec-template.md) 编写 `docs/tech-spec.md`（路径：`<active_project_path>/docs/tech-spec.md`）：
 
-| 环节 | 硬引用 |
-|---|---|
-| 选型清单（白名单来源） | `specification/<集>/backend/tech-stack.md`、`specification/<集>/frontend/tech-stack.md` |
-| 接口设计（信封 / 错误码 / 路由落位与资源词推导） | `specification/<集>/backend/api-design.md` |
-| config 键与 .env 策略（端口 / 存储落点） | `specification/<集>/shared/env-policy.md`——db 路径与上传目录的 config 默认值照「存储落点」表落，不自造文件名 |
-| 密钥与外部服务调用红线 | `specification/<集>/shared/security.md` |
+1. 用户要完成什么：引用 PRD 的需求与验收，概括完整数据链路。
+2. 前后端怎么分工，接口怎么拆：列出 Method、URL、请求/响应字段和成功、失败示例。
+3. 接口请求数据的类型选型：确定传输格式、字段类型、校验及必要的存储关系。
+4. 模型选型与提示词设计：明确模型职责、提示词、输出约束；无模型需求标明不适用。
+5. 接口逻辑算法设计：说明步骤和状态，逐接口分析技术选择对用户体验的影响；Agent 项目包含工具观察回传和下一轮决策。
+6. 接口失败异常设计：明确错误、超时、重试、降级和用户可见行为。
+7. 项目本地层级设计：明确目录职责、运行环境、配置和外部服务验证条件。
 
-`<集>` 从 tech-spec 头部 `specification:` 行取（该行来源：B2 确认时用户的答复，由 Router 派发时传入；沉默/未答 = `default`），解析为 `harness-core/specification/<集>/`。规范集不由本 skill 决定。
+逐层先提取已知结论，再指出会改变方案或用户体验的缺口，给出具体选项、后果与建议并与用户对齐；回答后更新对应章节，再推进依赖它的部分。不一次抛出七组问卷，不把待讨论建议写成已定需求。常规技术与目录安排由 Agent 提出，不要求用户逐项选择实现细节；关键分支未明确前不进入界面设计。
 
-## 产出
+每个接口分配稳定的 `API-001` 等编号，与 PRD 的 REQ / AC 关联；算法和异常沿用同一编号。旧项目沿用原需求编号。复杂关系按需加图表，不预建全部子文档。
 
-按 `references/tech-spec-template.md` 的结构输出，落盘 `docs/tech-spec.md`，落盘后向用户发起确认，确认后进入阶段 C。tech-spec 的消费链：§2 页面矩阵 + §3 接口设计 → `api-contracts.md`；§1 选型清单 + §4 config 键 + §5 外部服务规格 → Feature `plan.md`、全局 `Plan.md`、Planner `tasks.json` 的 `external_services`。
+## 三、逐接口讨论体验取舍
 
-## 自检清单（落盘前逐项过）
+设计第五层时读取 [接口体验分析](references/interface-experience-review.md)，逐接口从正常、耗时、失败和再次操作的场景检查。将“技术选择 → 用户看到或承担什么 → 可选方案 → 验收方式”写清，不能用完整的请求响应字段代替内部处理设计。
 
-1. **零 magic number 预检**：方案中每个数值都有对应的 config 键，config 键清单能覆盖全部数值。
-2. **选型全部在白名单内**：逐项对照两份 `tech-stack.md`，出现白名单外的库/版本即停，报告偏航。
-3. **追踪完整**：页面矩阵每行有 Feature / AC；接口清单每条有 API 编号与所属 Feature。
-4. **零追问检验**：模拟阶段 C 与 Planner 拿到方案开工——还会问什么？任何残留追问都是方案没定死，回去补齐。
+明显改变等待与操作方式、结果质量、可恢复性、费用、数据留存或执行权限的选择，先形成具体选项及建议，由主智能体用用户能理解的后果与其讨论；已有选择或明确授权范围内的判断直接沿用。相互关联的问题合并沟通，普通实现细节由 Agent 决定，不逐接口索取批准。
 
-## 红线
+有重要取舍时按 [决策记录模板](references/decision-record-template.md) 写入项目 `docs/decisions.md`（路径：`<active_project_path>/docs/decisions.md`），保留待确认或已确认状态及依据。将确认后的实现写回技术方案（路径：`<active_project_path>/docs/tech-spec.md`）的对应 API、数据、异常和目录章节；用户结果或操作发生变化时同步 PRD / AC（路径：`<active_project_path>/docs/PRD.md`），已有界面产物且受影响时同步风格文档（路径：`<active_project_path>/docs/ui-style.md`）或原型（路径：`<active_project_path>/docs/prototypes/` 下的实际文件）。待用户选择期间可继续独立部分，不把建议写成已确认事实。
 
-- 不写代码，不建业务文件，只产 `docs/tech-spec.md`。
-- 选型超出白名单 = 偏航停报，不先斩后奏。
-- 引用的规范文件缺失必报，不静默降级。
-- 方案细节不得留"实现时再定"的空位。
+## 四、检查与交接
 
-## 处理结束与交接
+检查成功和关键失败验收是否均有实现路径；接口请求与响应能否衔接；选型与项目规范是否一致。
 
-1. **落盘后提请确认**：`docs/tech-spec.md` 落盘后向用户发起确认：「技术方案已完成，请审阅选型 / 接口设计 / config 键。确认后进入阶段 C（技术契约）。」
-2. **修改即循环**：用户提出修改意见 = 未通过。按意见修改 tech-spec 对应部分，不改未经意见涉及的部分，重新落盘同名文件并重新提请确认。沉默、无回应不算确认；修改与确认可以多轮。
-3. **确认后回归主流程**：用户明确确认 = 阶段 TS 结束，回归主流程进入阶段 C。阶段 C 以前置条件「tech-spec 已确认」接手：C1 技术架构蓝图的选型值、C3 接口的技术形态均以本 tech-spec 为权威（细节见 `harness-core/skills/sdd-product-design/phase-C.md`）。
-4. **职责边界**：本 skill 到 tech-spec 确认即止，不做任何阶段 C 的事——不产 `data-model.md` / `api-contracts.md`，不建 Feature `plan.md` 与全局 `Plan.md`，不拆 task。
+交接阶段 B 或 Plan 前，定向读取 PRD 的“流程图与时序图”章节（路径：`<active_project_path>/docs/PRD.md`），按本轮已确认方案完善两类图。时序图补齐实际前端、后端及涉及的模型、工具、存储或外部服务参与者，标明已有 API 编号、同步/异步或流式返回、关键失败与用户反馈；只画项目真实涉及的部分，不展开代码内部细节。流程图同步受到技术取舍影响的用户动作与分支。接口字段仍引用 tech-spec，不在图中重复维护。
+
+核对两类 Mermaid 图结构完整、参与者与调用方向正确、主流程及关键异常与 PRD/tech-spec 一致；使用已有可用预览检查渲染，无可用预览时明确仅完成源文本检查，不为绘图额外安装工具。缺图或存在影响行为的图文冲突时先补齐或对齐，再进入后续阶段；纯文字转图不重复索取已有确认，业务变化按原确认规则处理。模型、外部服务的接口和限制需要可靠资料验证，注明来源，不能凭空补协议。
+
+真正阻塞开发的产品歧义、接口缺口或不可用依赖要指出；普通实现细节可由开发者在已确定的约束内选择。缺少真实服务凭据只影响相关验证，可推进独立工作，明确区分 Mock 与真实联调。文档只保存配置字段名和状态。
+
+方案头部记录 `status: Draft` 以及从项目继承的 `specification`（规范名称或 `null`）。检查重要体验取舍已有决定，选择已落入可验证的 AC 或技术检查，文档之间无冲突；仍待选择的关键分支不视为定稿。完成后整体提交确认一次，明确认可后改为 `Confirmed`；已讨论的选择只汇总，不逐项重问。子智能体将方案、相关决策路径和待确认事项交回主智能体。
+
+确认后，有新建或待调整界面时进入 [阶段 B](../sdd-product-design/phase-B.md)，依据已明确的数据、处理过程、等待和异常行为设计界面；不在本 Skill 创建 HTML 或原型。无界面或已有已确认界面无需变更时，直接进入 [开发循环](../../protocols/development-loop.md) 的 Plan。B 完成后同样交 Plan，由 Planner 综合需求、技术边界、界面设计与已确认取舍划分 Feature、任务、依赖和分工。Plan 只维护 `.sdd/tasks.json`（路径：`<active_project_path>/.sdd/tasks.json`），不增加独立计划文件；规划与开工授权按开发循环处理。

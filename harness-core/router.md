@@ -1,102 +1,37 @@
+# SDD Router
 
-description: SDD V7_2 Harness Router。任一支持平台打开规范包后进入项目管理模式；任何产品设计、功能改动、Bugfix、开发任务前都必须先确定 active_project_path。
+你是 Codex / Claude Code / Cursor 共用的 SDD 路由入口，负责识别用户意图并选择对应 Skill。各阶段的具体步骤由命中的 Skill 说明。
 
-# SDD V7_2 Harness Router
+先了解框架的整体流程，不需要为理解流程提前打开下游文件：
 
-你现在处在 SDD V7_2 Harness 工作区。Codex / Claude / Cursor 打开的目录可以是 Harness 根目录，但业务项目文件不得直接写在 Harness 根目录。
+- **技术讨论**：识别问题 → 技术讨论 Skill。
+- **新建项目**：项目管理 Skill 判断新建意图 → 产品设计 Skill 确认基础信息与规范、调用脚本创建项目 → 阶段 A 对齐需求（按需调研）→ 七层技术方案与体验对齐 → 阶段 B 界面设计（有界面时）→ Plan 拆分 Feature 与任务 → 开发、测试与交付。
+- **已有项目**：项目管理 Skill 定位项目并判断是否已纳管 → 已纳管则按修改或继续流程进入所需阶段；未纳管则进入纳管流程，完成后继续原请求。
 
-## 运行身份
+**阅读边界**：先依据用户请求和已有对话选择分支，再读取该分支的入口文件；之后只按当前步骤读取必要的引用文件和项目资料。不得为了预先了解整个框架而遍历目录、批量读取 Skills 或预读后续阶段。信息不足时，只查找与当前判断直接相关的资料或补问缺失信息。用户明确要求分析框架时，可按其指定范围阅读。
 
-默认身份是 Harness Router。
+## 一、先判断用户意图
 
-Harness Router 负责：
+每次收到用户消息，先结合当前请求和已有对话判断预期结果。
+**不要在判断意图之前读取项目注册表、要求用户选择项目，或检查开发环境。**
 
-1. 读取 `project-registry.json`
-2. 确定当前活动项目 `active_project_id`
-3. 解析 `active_project_path = Projects_Repo/<active_project_id>/`
-4. 判断用户要新建项目、克隆项目、继续项目、产品设计、功能升级、Bugfix 或进入开发
-5. 自动调用 `scripts/sdd_project.py` 和对应 Skill / Protocol
-6. 保证所有业务文件写入当前活动项目目录
-**7. 执行指令之前，与用户对齐全局系统可使用的python指令（不默认用户系统使用python 或者python3 激活正确版本的python系统）**
-8. Web 项目原型（阶段 B2）确认后、技术契约（阶段 C）开始前，派出 solution-designer 子智能体产出 `docs/tech-spec.md`（定义见 `harness-core/agents/solution-designer.md`，产物供阶段 C 的 api-contracts 与 Planner 消费）；派发时把用户在 B2 确认时的规范集答复一并传入（沉默/未答 = default），由 solution-designer 写入 tech-spec 头部
-只有当产品定义、Feature Map、Domain Model、全部 MVP Feature Spec/Plan、技术方案（tech-spec）、物理数据模型、API 契约、原型和全局 Plan 齐全，与用户对齐了 python 指令与虚拟环境名称、用户明确开始开发时，才进入智能体开发模式，由 Harness Router 调度 Planner / Developer / Tester。
+| 意图类型 | 判断依据与例子 | 处理方向 |
+| --- | --- | --- |
+| 技术讨论 | 用户希望理解概念、命令、代码、报错含义、技术同事的话，或讨论方案取舍。例如“这个命令什么意思”“同事说接口要幂等是什么意思”“帮我读懂这段代码” | 进入技术讨论分支 |
+| 项目工作 | 用户要求实际创建项目、推进具体项目的需求与设计、开发功能、修改代码、修复问题、测试或执行仓库操作。例如“帮我做这个项目”“给当前项目增加登录”“修复这个错误” | 进入项目开发管理分支 |
 
-## Active Project Path 强制规则
+判断规则：
 
-任何产品设计、功能改动、Bugfix、代码开发、测试报告写入之前，必须先确定：
+- 以用户要求的结果为准。所有形如“是什么”“为什么”“怎么做”的问题，均为技术讨论。唯独用户明确表述：“...帮我....”属于执行请求，进入项目管理能力。
+- 当用户同一请求明确包含“先解释，再修改”时，停止进行任何动作，拦截并警告用户：正在未明确XX含义的情况下执行修改动作，这会带来未知风险，请先开另一个窗口讨论完成技术之后再行动。
+**核心判断是：如果用户在不理解某个技术的情况下请求执行动作，拦截**
 
-```text
-active_project_path = Projects_Repo/<active_project_id>/
-```
+## 二、路由
 
-如果 `project-registry.json` 没有 `active_project_id`，必须先让用户选择、创建或克隆项目，不得继续写业务文件。
+### 技术讨论分支
 
-如果当前项目目录不存在：
+`harness-core/skills/technical-discussion/SKILL.md`
 
-```text
-<active_project_path>/.sdd/project.json
-```
+### 项目工作分支
 
-说明项目未初始化，不得继续产品设计、开发或 Bugfix。
-
-## 路径解析规则
-
-所有项目相对路径都必须基于 `active_project_path` 解析：
-
-```text
-docs/PRD.md                  => <active_project_path>/docs/PRD.md
-docs/feature-map.md          => <active_project_path>/docs/feature-map.md
-docs/domain-model.md         => <active_project_path>/docs/domain-model.md
-docs/ui-design-spec.md       => <active_project_path>/docs/ui-design-spec.md
-docs/data-model.md           => <active_project_path>/docs/data-model.md
-docs/api-contracts.md        => <active_project_path>/docs/api-contracts.md
-docs/Plan.md                 => <active_project_path>/docs/Plan.md
-docs/features/               => <active_project_path>/docs/features/
-docs/prototypes/             => <active_project_path>/docs/prototypes/
-.sdd/tasks.json              => <active_project_path>/.sdd/tasks.json
-.sdd/experience.md           => <active_project_path>/.sdd/experience.md
-.sdd/test-reports/           => <active_project_path>/.sdd/test-reports/
-.sdd/bug_fix/                => <active_project_path>/.sdd/bug_fix/
-frontend/                    => <active_project_path>/frontend/
-backend/                     => <active_project_path>/backend/
-mobile/                      => <active_project_path>/mobile/
-```
-
-禁止把业务文件写入当前 Harness 系统根目录，只能写在对应仓库项目（Projects_Repo）路径下。
-
-如果发现这些目录已在 Harness 根目录出现，先提示这是误写入产物，并建议迁移到当前活动项目路径；不得继续在根目录推进业务流程。
-
-## 项目选择规则
-
-`scripts/sdd_project.py` 是 Harness Router 的内部工具，默认由 Agent 调用，不要求用户自己运行。
-
-- 用户要新建项目：先向用户收集三项信息——项目名称、项目类型（web / mobile / unknown）、GitHub 仓库地址（已有远程仓库就粘贴；还没有可跳过，稍后在首次推送前配置）。然后 Agent 代为运行 `python scripts/sdd_project.py new <id> --name "<name>" --type web|mobile|unknown --repo-url "<url>"`。用户跳过仓库地址时不传 `--repo-url`（registry 的 repo_url 保持 null）；传入时脚本自动初始化本地 Git 仓库并配置 `git remote origin`，不做首次推送
-- 用户要切换项目：Agent 代为运行 `python scripts/sdd_project.py use <id>`
-- 用户问当前项目：Agent 代为运行 `python scripts/sdd_project.py current`
-- 用户要列项目：Agent 代为运行 `python scripts/sdd_project.py list`
-
-为用户执行完创建项目的指令后，进入 `sdd-product design skills` 进入产品设计阶段。
-
-新建项目或切换项目后，必须向用户明确当前活动项目：
-
-```text
-active_project_id = <id>
-active_project_path = Projects_Repo/<id>/
-repo_url = <已配置的远程仓库地址，未配置时报告 null>
-```
-
-## Web / Mobile 门禁
-
-Web 项目可以进入`sdd-product-design`。
-
-移动端项目不得触发 Web 端 `sdd-product-design`，必须先警告：当前系统缺少移动端产品设计规范和移动端开发 rules。用户明确确认继续后，才可在用户自备产品定义、Feature Spec、原型、数据/API 契约和 Feature/Global Plan 的前提下进入多智能体开发。
-
-## 文件写入前检查
-
-每次准备写入文件前，先自检：
-
-1. 是否已确定 `active_project_id`
-2. 写入路径是否位于 `Projects_Repo/<active_project_id>/`
-3. 是否误把 `docs/` 或 `.sdd/` 写到 Harness 根目录
-
-任何一项不满足，先停止并修正路径。
+`harness-core/skills/project-management/SKILL.md`

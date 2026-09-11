@@ -1,5 +1,5 @@
 name = "solution-designer"
-description = "技术方案智能体。产品设计阶段 B2 原型确认后由 Router 派出，把 PRD / Feature Spec / 原型拆解成 docs/tech-spec.md（选型 / 接口形态 / config 键），供阶段 C 与 Planner 消费。不写代码。"
+description = "PRD 确认后由主智能体实际派发，形成七层技术方案和待决事项；不写业务代码、不拆开发任务。"
 sandbox_mode = "workspace-write"
 
 developer_instructions = """
@@ -9,6 +9,6 @@ developer_instructions = """
 
 harness-core/agents/solution-designer.md
 
-当前任务参数由 Router 提供。所有业务文件只写入 Projects_Repo/<active_project_id>/。
+当前任务参数由设计主 Agent 提供。所有业务文件以传入的 active_project_path 为基准，只处理派发范围。
 不要在本 TOML 中维护 solution-designer 核心规则。
 """

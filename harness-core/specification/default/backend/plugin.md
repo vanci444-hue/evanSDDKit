@@ -66,15 +66,11 @@ specs = registry.to_specs()  # OpenAI function calling 格式
 
 ## 外部服务调用规则（强制）
 
-### 写解析逻辑前必须先真实调用
+### 按授权核对外部响应
 
-封装第三方 API 时，必须先写探索代码真实调用并打印响应，确认结构后再写解析逻辑：
-```python
-# 探索阶段
-response = await client.post(url, json=payload, headers=headers)
-print(json.dumps(response.json(), indent=2, ensure_ascii=False))
-# 确认结构后，再写正式解析代码
-```
+封装第三方 API 时先核对官方文档和技术方案的响应契约。真实调用仅在已授权用途、额度及配置范围内执行；只有 Key 不代表已获付费授权。
+已获授权时，使用最小必要调用确认响应结构，日志只保存状态码、字段名等必要脱敏信息，不 dump 响应全文或秘密。
+授权或配置不足时，将受影响的真实联调交回编排器；已允许 Mock 的部分可按契约验证，但不得报告真实调用通过。
 
 ### 安全红线（指针）
 

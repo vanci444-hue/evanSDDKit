@@ -1,234 +1,62 @@
-# SDD V7_2 — 项目管理型 AI Coding Harness
+# SDD V7_2
 
-> Spec-Driven Development V7_2：从“项目内开发规范包”升级为“多项目管理 Harness”，并支持 Codex / Claude Code / Cursor 三端入口。
+SDD 是一个多项目开发工作台，支持 Codex、Claude Code 和 Cursor。核心工作规则集中在 `harness-core/`，业务项目位于 `Projects_Repo/<project-id>/`。
 
----
+## 从哪里开始
 
-## V7_2 的定位
+在编辑器中打开 Harness 根目录。三个平台入口统一读取 [Router](harness-core/router.md)，先区分技术讨论和项目工作。项目工作进入 [项目管理](harness-core/skills/project-management/SKILL.md)，定位项目后再处理新建、修改或接入请求。
 
-SDD V7_2 不再默认“当前文件夹就是项目”。它是一个 **项目管理系统**：
-
-1. 先管理项目仓库 `Projects_Repo/`
-2. 再选择新建项目 / 克隆项目 / 继续已有项目 / 功能升级 / Bugfix
-3. 然后进入单个项目工作区
-4. 最后执行产品设计、多 Agent 开发、测试、修复和经验沉淀
-
-一句话：
-
-> V5 是开发规范包，V7_2 是项目管理型、多平台 Agent Harness。
-
-核心原则：
-
-- `harness-core/` 是唯一真相源
-- `.codex/`、`.claude/`、`.cursor/` 只做平台适配
-- `Projects_Repo/<project-id>/` 只放业务项目状态和代码，不再复制整套平台规则
-
----
-
-## 目录结构
+## 新项目的阅读链
 
 ```text
-SDD_V7_2/
-├── AGENTS.md                        # Codex 自动入口
-├── START.md                         # 非 Cursor 兜底 / 教学说明
-├── HARNESS.md                       # Harness 使用规范
-├── project-registry.json            # 项目注册表
-│
-├── harness-core/                    # 唯一真相源：agents / skills / protocols / specification
-│   ├── router.md
-│   ├── agents/
-│   ├── skills/
-│   ├── protocols/
-│   └── specification/
-│
-├── .codex/                          # Codex 适配层：subagents TOML + config
-│   ├── config.toml
-│   └── agents/
-│
-├── .claude/                         # Claude Code 适配层
-│   ├── CLAUDE.md
-│   └── agents/
-│
-├── Projects_Repo/                   # 默认项目仓库，所有项目放这里
-│   └── <project-id>/
-│
-├── .cursor/                         # Cursor 适配层，所有文件只引用 harness-core
-│   ├── agents/
-│   ├── skills/
-│   └── rules/
-│
-├── templates/
-│   ├── project/                     # 新项目初始化模板
-│   ├── tasks.json
-│   ├── experience.md
-│   └── work-log.md
-│
-├── memory/
-│   └── harness-experience.md        # 系统级经验
-│
-└── pycore/                          # Python 后端框架底座
+平台入口 → Router → 项目管理 → 产品设计入口
+  → 确认项目基础信息与规范集 → 脚本创建项目
+  → A 需求与验收对齐（按需调用 R 调研）
+  → 七层技术方案与体验对齐 → B 界面设计（有界面时）
+  → Plan 划分 Feature / 任务
+  → Developer 实现 → Tester 验证
 ```
 
----
+只读取当前步骤需要的文件。后续修改从已有设计和任务继续，避免每次重跑完整设计流程；具体流程以相应 Skill 为准。
 
-## 项目工作区结构
+## 核心产物
 
-每个项目都在 `Projects_Repo/<project-id>/` 下：
+| 文件 | 内容 |
+| --- | --- |
+| `docs/PRD.md` | 用户目标、需求范围、业务规则与验收标准；使用 REQ / AC 追踪 |
+| `docs/tech-spec.md` | 技术选型、接口与数据、模型、算法、异常、项目结构 |
+| `docs/decisions.md` | 有重要体验取舍时保存选项、用户影响、最终选择与确认依据 |
+| `.sdd/tasks.json` | Plan 生成的 Feature 分组、需求映射、任务、依赖与执行状态 |
+| `docs/ui-style.md` | UI Skill 产出的项目设计风格，供原型、前端开发和视觉验收引用 |
+| `docs/prototypes/` | 用户需要时保存界面设计 |
+
+接口契约和实施要点写进技术方案，重点分析每个接口的处理方式怎样影响用户体验；重要选择先讨论并留存依据，Plan 再按需引用相关章节。旧项目保留原编号与任务记录，不强制迁移。交付时将环境、配置与启动说明写入项目 README；按需产物没有内容时不预建空文件。
+
+## 项目与规范集
+
+项目基础信息保存在 `.sdd/project.json`，根 `project-registry.json` 保存项目登记与默认活动项目。`specification` 由用户明确选择：
+
+- `"default"`：使用默认规范集及适配的技术栈。
+- 自定义集合名称：使用 `harness-core/specification/` 中对应集合。
+- `null`：不加载规范集，以当前项目确认的技术方案为准。
+
+字段缺失表示尚未确定，不能自动当作 `default` 或 `null`。详见 [规范集说明](harness-core/specification/README.md)。新建脚本只在选择 `default` 时复制 PyCore。
+
+## 目录
 
 ```text
-Projects_Repo/<project-id>/
-├── AGENTS.md                        # 项目级轻入口，提示返回 Harness 根目录
-├── .sdd/                            # 项目状态脑子
-│   ├── project.json                 # 项目元信息
-│   ├── status.json                  # 当前阶段状态
-│   ├── tasks.json                   # 任务状态机
-│   ├── experience.md                # 项目级经验
-│   ├── work-log.md                  # 工作日志
-│   ├── bug_fix/                     # Bugfix 报告
-│   └── test-reports/                # Tester 报告
-│
-├── docs/
-│   ├── PRD.md
-│   ├── feature-map.md
-│   ├── domain-model.md
-│   ├── tech-spec.md
-│   ├── data-model.md
-│   ├── api-contracts.md
-│   ├── Plan.md
-│   ├── features/
-│   │   └── F-xxx-<slug>/
-│   │       ├── spec.md
-│   │       └── plan.md
-│   └── prototypes/
-│
-├── frontend/ / mobile/
-├── backend/
-└── ...
+harness-core/        Skills、角色、流程协议和可选规范集
+.codex/             Codex 平台适配
+.claude/            Claude Code 平台适配
+.cursor/            Cursor 平台适配
+scripts/            项目创建和一致性检查
+templates/          初始化模板
+Projects_Repo/      各项目代码、docs 和 .sdd
+project-registry.json
 ```
 
----
+平台适配方式见 [平台协议](harness-core/protocols/platform-adapters.md)。开发执行以 [开发循环](harness-core/protocols/development-loop.md) 为准；角色分工见 [协作架构](docs/multi-agent-architecture.md)。
 
-## 工作流总览
+## 检查 Harness
 
-```text
-Cursor 自动注入 Harness Router
-  │
-  ├─ 读取 project-registry.json
-  │
-  ├─ 选择操作
-  │   ├─ 新建项目
-  │   ├─ 从 GitHub 克隆项目
-  │   ├─ 继续已有项目
-  │   ├─ 已有项目功能升级
-  │   └─ Bugfix
-  │
-  ├─ 进入 Projects_Repo/<project-id>/
-  │
-  ├─ 判断项目形态
-  │   ├─ Web：可走 sdd-product-design 全流程
-  │   └─ 移动端：警告缺少移动端规范，用户确认后继续
-  │
-  ├─ 判断项目状态
-  │   ├─ 缺产品定义 / Feature Spec / 技术方案 / 技术契约 / Plan → 产品设计或要求用户补齐
-  │   └─ 文件齐全 → 多 Agent 开发
-  │
-  └─ Planner → Developer → Tester → Bugfix / Experience
-```
-
-
-## Codex 使用方式
-
-在 Codex 中打开 Harness 根目录后，先读取：
-
-```text
-AGENTS.md
-.codex/README.md
-```
-
-多智能体开发循环由语义路由触发，无命令层，协议本体位于：
-
-```text
-harness-core/protocols/development-loop.md
-```
-
-`sdd-start` / `sdd-new-project` / `sdd-align` / `sdd-bugfix` 命令已移除，由 Router 直接路由：开发循环走 `harness-core/protocols/development-loop.md`，新建项目走 `scripts/sdd_project.py new`（见 `harness-core/router.md`），Bugfix 走 `harness-core/skills/sdd-bugfix/SKILL.md`。
-
-Codex 子智能体配置：
-
-```text
-.codex/agents/planner.toml
-.codex/agents/developer.toml
-.codex/agents/tester.toml
-```
-
-如果当前 Codex 环境不支持自定义 subagent TOML，按 `harness-core/protocols/codex-subagents.md` 在主会话中模拟 Planner / Developer / Tester 的角色边界。
-
----
-
-## 核心变化
-
-### 1. 所有项目统一放进 `Projects_Repo/`
-
-无论是新建项目，还是从 GitHub 拉下来的项目，都放在：
-
-```text
-Projects_Repo/<project-id>/
-```
-
-V7_2 不管理任意外部路径，降低教学和使用复杂度。
-
-### 2. `.sdd/` 替代 `.output/` 成为长期项目状态目录
-
-V5 的 `.output/` 更像临时产物目录。V7_2 里：
-
-- `docs/` 存设计文档
-- `.sdd/` 存任务、状态、经验、日志、报告
-
-### 3. 三级经验系统
-
-```text
-任务经验 → 项目经验 → 系统经验
-```
-
-- 任务经验：具体任务/bug 的局部经验
-- 项目经验：当前项目长期有效的经验，写入 `.sdd/experience.md`
-- 系统经验：跨项目可复用的 Harness 规则，写入 `memory/harness-experience.md`
-
-经验可以上升，但必须带证据和用户确认。
-
-### 4. Web / 移动端分流
-
-- Web 项目：可以走产品设计 Skill，按 `产品定义 → Feature Map/Spec → 原型 → 数据/API 契约 → Feature Plan/全局 Plan` 产出设计材料
-- 移动端项目：当前缺少移动端产品设计和开发 rules，必须警告并等待用户确认；用户需自行提供等价的产品定义、功能规格、原型、数据/API 契约和开发计划
-
-### 5. 产品定义与技术契约分层
-
-```text
-PRD 产品定义
-  → Feature Map
-    → Domain Model
-      → Feature Spec / Acceptance Criteria
-        → UI 原型
-          → tech-spec（技术方案：solution-designer 产选型 / 接口形态 / config 键）
-            → Data Model / API Contracts
-              → Feature Plan / Global Plan
-```
-
-- PRD 不提前锁死物理表字段和 API DTO
-- Feature 是业务交付、Tester 验收、CI 追踪和用户门禁单位
-- 页面、接口、数据库表和组件只是 Feature 的实现载体
-- 每个 MVP Feature 必须拥有独立 `spec.md` 和 `plan.md`
-
----
-
-## 一句话架构
-
-```text
-SDD V7_2 Harness
-  → Project Registry
-    → Projects_Repo/<project-id>
-      → docs + .sdd
-        → Product Design / Multi-Agent Development / Bugfix
-          → Experience Promotion
-            → Harness Evolution
-```
+在根目录运行 `python3 scripts/check_harness_consistency.py`，检查入口与引用路径、模板 JSON 和任务依赖契约。已明确标注的待建设分支会提示警告；检查通过不代表业务项目已完成开发或验收。

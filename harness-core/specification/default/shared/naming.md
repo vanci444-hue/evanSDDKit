@@ -1,6 +1,6 @@
 # 命名规范（default）
 
-> 来源：原 dev-standards/frontend.md §4（前端命名块原样）+ 后端各件命名条归一 + V8 naming 余条（Pydantic 后缀、分支名等按本集现行值取值）。前后端命名的单一权威源。
+本件是前后端命名的单一权威源；前端示例使用 React + TypeScript，后端命名按本集工程约定。
 
 ## 前端
 
@@ -8,16 +8,19 @@
 
 - 页面组件：`PascalCase` + `Page` 后缀。
 - 通用组件：`PascalCase`，可加功能前缀（如 `App*`）。
-- Store / Service / 类型文件：`camelCase` 文件名。
+- 含 JSX 的组件 / Provider 文件使用 `.tsx`；普通状态逻辑 / Service / 类型文件使用 `camelCase` 文件名与 `.ts`。
+- 自定义 Hook 使用 `use` 开头的 `camelCase`；Context / Provider 组件使用 `PascalCase`。
 - 环境变量：`VITE_` 前缀大写下划线（如 `VITE_API_BASE_URL`）。
 
 **示例（对照表）**
 
 | 类型     | 规则                    | 示例                          |
 |----------|-------------------------|-------------------------------|
-| 页面组件 | PascalCase + Page 后缀  | `LoginPage.vue`, `ItemListPage.vue` |
-| 通用组件 | PascalCase + 功能前缀   | `AppHeader.vue`, `UserAvatar.vue`   |
-| Store    | camelCase               | `useAuthStore.ts`, `useItemStore.ts` |
+| 页面组件 | PascalCase + Page 后缀  | `LoginPage.tsx`, `ItemListPage.tsx` |
+| 通用组件 | PascalCase + 功能前缀   | `AppHeader.tsx`, `UserAvatar.tsx`   |
+| Hook     | use + camelCase         | `useAuth.ts`, `useItems.ts`          |
+| Provider | PascalCase              | `AuthProvider.tsx`                  |
+| 状态逻辑 | camelCase               | `authReducer.ts`, `itemReducer.ts`  |
 | Service  | camelCase               | `authService.ts`, `itemService.ts`   |
 | 类型文件 | camelCase               | `auth.ts`, `item.ts`                 |
 
@@ -31,6 +34,6 @@
 
 ## 通用
 
-- 数据库字段 / 接口字段：snake_case；接口 DTO 字段以 `docs/api-contracts.md` 契约为准，前后端同名字段不做驼峰转换
+- 数据库字段 / 接口字段：snake_case；接口 DTO 字段以 `docs/tech-spec.md` §二契约为准，前后端同名字段不做驼峰转换
 - 分支名：`feat/<功能>`、`fix/<问题>` 小写短横线；commit message 一句话说清本次改动，一个功能一次 commit（git 流程见 `harness-core/skills/git-workflow/`）
 - 项目 id：小写英文 + 短横线（如 `kefu-bot`）

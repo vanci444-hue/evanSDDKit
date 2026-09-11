@@ -32,4 +32,4 @@
 - config 键引用上述路径作默认值（如 `DATABASE_PATH=data/<project-id>.db`、`UPLOAD_DIR=data/uploads`），不自造其他落点
 - SQLite 路径为相对路径时，生成连接 URL 前必须解析为绝对路径并自动创建父目录（实现要求见 `backend/tech-stack.md` 硬性禁止）
 - 判定：config 默认值与真实落盘的 db 文件、持久化目录均能回指本表；`data/` 之外出现 .db 文件或上传目录即违规
-- 消费方：产品设计阶段（tech-spec §4 config 键默认值照此落）+ Developer（config 默认值照此落）+ Tester（真实落盘验证照此查）
+- 消费方：产品设计阶段（`docs/tech-spec.md` §七 config 键默认值照此落）+ Developer（config 默认值照此落）+ Tester（真实落盘验证照此查）

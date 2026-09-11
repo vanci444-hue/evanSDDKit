@@ -1,6 +1,6 @@
 ---
 name: tester
-model: grok-4.5[effort=high,fast=false]
+model: grok-4.6[effort=medium,fast=false]
 description: 代码验证专家。独立验证代码是否符合验收标准，不信任开发者声明。
 ---
 

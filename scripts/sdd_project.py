@@ -9,8 +9,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -45,10 +47,15 @@ def load_registry() -> dict:
 
 
 def save_registry(registry: dict) -> None:
-    REGISTRY_PATH.write_text(
-        json.dumps(registry, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
+    # Replace atomically: interrupted writes must not truncate the registry.
+    with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", dir=ROOT, delete=False) as handle:
+        temporary = Path(handle.name)
+        json.dump(registry, handle, ensure_ascii=False, indent=2)
+        handle.write("\n")
+    try:
+        os.replace(temporary, REGISTRY_PATH)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def get_project(registry: dict, project_id: str) -> dict | None:
@@ -61,8 +68,6 @@ def ensure_project_dirs(project_dir: Path) -> None:
         ".sdd/test-reports",
         ".sdd/bug_fix",
         "docs",
-        "docs/features",
-        "docs/prototypes",
     ]:
         (project_dir / rel).mkdir(parents=True, exist_ok=True)
 
@@ -144,7 +149,7 @@ Do not create local `.cursor/`, `.claude/`, or `.codex/` rule copies inside this
         )
 
 
-def init_sdd_files(project_dir: Path, project_id: str, name: str, project_type: str, source: str, repo_url: str | None) -> None:
+def init_sdd_files(project_dir: Path, project_id: str, name: str, project_type: str, source: str, repo_url: str | None, specification: str | None = None) -> None:
     ensure_project_dirs(project_dir)
 
     project_json = project_dir / ".sdd/project.json"
@@ -157,6 +162,7 @@ def init_sdd_files(project_dir: Path, project_id: str, name: str, project_type: 
                     "project_type": project_type,
                     "source": source,
                     "repo_url": repo_url,
+                    "specification": specification,
                     "created_at": now(),
                     "last_active": now(),
                     "harness_version": "V7_2",
@@ -202,7 +208,7 @@ def init_sdd_files(project_dir: Path, project_id: str, name: str, project_type: 
     write_project_entrypoints(project_dir)
 
 
-def register_project(project_id: str, name: str, project_type: str, source: str, repo_url: str | None = None, activate: bool = True) -> None:
+def register_project(project_id: str, name: str, project_type: str, source: str, repo_url: str | None = None, activate: bool = True, specification: str | None = None) -> None:
     registry = load_registry()
     projects = registry.setdefault("projects", [])
     rel_path = f"Projects_Repo/{project_id}"
@@ -215,6 +221,7 @@ def register_project(project_id: str, name: str, project_type: str, source: str,
         "source": source,
         "repo_url": repo_url,
         "project_type": project_type,
+        "specification": specification,
         "status": "initialized",
         "created_at": existing.get("created_at") if existing else now(),
         "last_active": now(),
@@ -254,21 +261,174 @@ def active_project(registry: dict | None = None) -> dict | None:
     return get_project(registry, active_id)
 
 
-def cmd_new(args: argparse.Namespace) -> None:
+def validate_directory_name(value: str, label: str) -> None:
+    if not value.strip() or value in {".", ".."} or any(c in value for c in ("/", "\\", "\0")):
+        raise SystemExit(f"{label} must be a single directory name: {value!r}")
+
+
+def validate_new_project(args: argparse.Namespace, *, allow_existing: bool = False) -> Path:
+    """Check inputs and required scaffolding before creating any project files."""
+    validate_directory_name(args.id, "Project ID")
+    if not args.name.strip():
+        raise SystemExit("Project name must not be empty")
     project_dir = PROJECTS_ROOT / args.id
-    project_dir.mkdir(parents=True, exist_ok=True)
-    copy_harness(project_dir)
-    init_sdd_files(project_dir, args.id, args.name, args.type, "new", args.repo_url)
-    register_project(args.id, args.name, args.type, "new", repo_url=args.repo_url, activate=True)
+    if PROJECTS_ROOT.resolve().parent != ROOT.resolve():
+        raise SystemExit("Projects_Repo must be inside the Harness root")
+    if project_dir.resolve().parent != PROJECTS_ROOT.resolve():
+        raise SystemExit("Project path must be a direct child of Projects_Repo")
+    if get_project(load_registry(), args.id):
+        raise SystemExit(f"Project ID is already registered: {args.id}")
+    if project_dir.is_symlink() or (project_dir.exists() and not allow_existing):
+        raise SystemExit(f"Project path already exists; refusing to overwrite: {project_dir}")
+
+    if args.specification is not None:
+        validate_directory_name(args.specification, "Specification")
+        if args.specification == "null":
+            raise SystemExit("Use --no-specification for JSON null")
+        specifications_root = ROOT / "harness-core/specification"
+        specification_dir = specifications_root / args.specification
+        if specification_dir.resolve().parent != specifications_root.resolve():
+            raise SystemExit("Specification must be inside harness-core/specification")
+        if not specification_dir.is_dir():
+            raise SystemExit(f"Specification does not exist: {args.specification}")
+
+    for rel in (".sdd/experience.md", ".sdd/work-log.md", "README.md"):
+        template = ROOT / "templates/project" / rel
+        if not template.is_file():
+            raise SystemExit(f"Required project template is missing: {template}")
+    if getattr(args, "cmd", "new") == "new" and args.specification == "default" and not (ROOT / "pycore").is_dir():
+        raise SystemExit("Default runtime scaffolding is missing: pycore")
+    return project_dir
+
+
+def onboard_origin(source: Path) -> str | None:
+    """Read only the source's own repository; never inherit the Harness repo."""
+    if not (source / ".git").exists():
+        return None
+    try:
+        result = subprocess.run(["git", "rev-parse", "--show-toplevel"], cwd=source,
+                                capture_output=True, text=True, check=True)
+        if Path(result.stdout.strip()).resolve() != source:
+            raise SystemExit("Source Git root is not the project root")
+        remote = subprocess.run(["git", "remote", "get-url", "origin"], cwd=source,
+                                capture_output=True, text=True)
+        return remote.stdout.strip() if remote.returncode == 0 else None
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise SystemExit("Cannot verify source Git repository; no files changed") from exc
+
+
+def cmd_onboard(args: argparse.Namespace) -> None:
+    target = validate_new_project(args, allow_existing=args.mode == "register")
+    given = Path(args.from_path).expanduser()
+    if not given.is_absolute() or given.is_symlink() or not given.is_dir():
+        raise SystemExit("Source must be an existing absolute directory, not a symbolic link")
+    source = given.resolve()
+    if args.mode == "register":
+        if source != target.resolve() or not target.is_dir():
+            raise SystemExit("Register mode requires the existing Projects_Repo/<id> directory")
+    elif source == ROOT or ROOT in source.parents or source in ROOT.parents:
+        raise SystemExit("Copy mode requires a source outside the Harness, not its ancestor")
+    if (source / ".git").exists() and not (source / ".git").is_dir():
+        raise SystemExit("Git worktree/submodule pointer cannot be copied; prepare an independent clone")
+    for rel in (".git", ".sdd", ".sdd/test-reports", ".sdd/bug_fix", "docs"):
+        path = source / rel
+        if path.is_symlink() or (path.exists() and not path.is_dir()):
+            raise SystemExit(f"Unsafe or conflicting directory: {rel}")
+    for rel in (".sdd/project.json", ".sdd/status.json", ".sdd/tasks.json"):
+        if (source / rel).exists() or (source / rel).is_symlink():
+            raise SystemExit(f"Existing SDD metadata requires explicit migration before onboarding: {rel}")
+    for rel in ("AGENTS.md", "README.md", ".sdd/experience.md", ".sdd/work-log.md"):
+        path = source / rel
+        if path.is_symlink() or (path.exists() and not path.is_file()):
+            raise SystemExit(f"Unsafe or conflicting file: {rel}")
+    origin = onboard_origin(source)
+    if args.repo_url and origin and args.repo_url != origin:
+        raise SystemExit("Requested repo_url conflicts with existing origin; choose before onboarding")
+    repo_url = origin or args.repo_url
+    if args.mode == "copy":
+        ignore_runtime = shutil.ignore_patterns(
+            "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache",
+            ".mypy_cache", ".ruff_cache", ".DS_Store")
+        def ignore(directory: str, names: list[str]) -> list[str] | set[str]:
+            # Git refs may have names such as 'venv'; repository internals are not caches.
+            if Path(directory).is_relative_to(source / ".git"):
+                return []
+            return ignore_runtime(directory, names)
+        shutil.copytree(source, target, symlinks=True, ignore=ignore)
+    try:
+        if args.repo_url and not origin and not configure_remote(target, args.repo_url):
+            raise RuntimeError("Git remote configuration failed")
+        init_sdd_files(target, args.id, args.name, args.type, "onboarded", repo_url,
+                       specification=args.specification)
+        register_project(args.id, args.name, args.type, "onboarded", repo_url=repo_url,
+                         specification=args.specification)
+    except Exception as exc:
+        raise SystemExit(f"Onboarding incomplete at {target}; preserve and inspect partial files before retrying: {exc}") from exc
+    print(f"Project onboarded: {target}")
+    print(f"Source preserved: {source}")
+    print(f"Specification: {json.dumps(args.specification, ensure_ascii=False)}")
+
+
+def cmd_remove(args: argparse.Namespace) -> None:
+    """Archive one identified project and unregister it; never delete permanently."""
+    validate_directory_name(args.id, "Project ID")
+    registry = load_registry()
+    entries = [p for p in registry["projects"] if p["id"] == args.id]
+    target = PROJECTS_ROOT / args.id
+    if len(entries) != 1 or entries[0]["path"] != f"Projects_Repo/{args.id}":
+        raise SystemExit("Project registration missing or inconsistent")
+    if PROJECTS_ROOT.resolve() != ROOT / "Projects_Repo" or target.is_symlink() or not target.is_dir():
+        raise SystemExit("Project path is missing or unsafe")
+    metadata = target / ".sdd/project.json"
+    if (target / ".sdd").is_symlink() or metadata.is_symlink():
+        raise SystemExit("Project metadata must not be a symbolic link")
+    if json.loads(metadata.read_text(encoding="utf-8")).get("id") != args.id:
+        raise SystemExit("Project identity does not match its registration")
+    backup = Path(args.backup_dir).expanduser()
+    if not backup.is_absolute() or backup.is_symlink():
+        raise SystemExit("Backup must be an absolute path, not a symbolic link")
+    backup = backup.resolve()
+    if backup == ROOT or ROOT in backup.parents or backup in ROOT.parents:
+        raise SystemExit("Backup must be outside the Harness, not its ancestor")
+    if backup.exists() or backup.is_symlink() or not backup.parent.is_dir():
+        raise SystemExit("Backup must not exist; its parent directory must exist")
+    if backup.parent.stat().st_dev != target.stat().st_dev:
+        raise SystemExit("Backup must be on the same filesystem; project unchanged")
+    original = REGISTRY_PATH.read_bytes()
+    backup.mkdir(mode=0o700)
+    (backup / "project-registry.before.json").write_bytes(original)
+    os.rename(target, backup / args.id)
+    registry["projects"] = [p for p in registry["projects"] if p["id"] != args.id]
+    if registry.get("active_project_id") == args.id:
+        registry["active_project_id"] = None
+    try:
+        save_registry(registry)
+    except Exception:
+        os.rename(backup / args.id, target)
+        raise
+    print(f"Project removed from Harness: {target}")
+    print(f"Recoverable backup: {backup}")
+    print("No services stopped or remote repositories modified by this command")
+
+
+def cmd_new(args: argparse.Namespace) -> None:
+    project_dir = validate_new_project(args)
+    project_dir.mkdir(parents=True, exist_ok=False)
+    if args.specification == "default":
+        copy_harness(project_dir)
+    init_sdd_files(project_dir, args.id, args.name, args.type, "new", args.repo_url, specification=args.specification)
+    register_project(args.id, args.name, args.type, "new", repo_url=args.repo_url, activate=True, specification=args.specification)
+    if args.repo_url and not configure_remote(project_dir, args.repo_url):
+        raise SystemExit(
+            f"Project created and registered at {project_dir}, but Git remote configuration failed. "
+            "Verify origin inside this project before continuing; do not run new again."
+        )
     if args.repo_url:
-        if configure_remote(project_dir, args.repo_url):
-            print(f"Git remote origin: {args.repo_url}")
-        else:
-            print(f"Repo URL recorded: {args.repo_url}")
-            print("Remote not configured (git unavailable); run inside the project: git remote add origin <url>")
+        print(f"Git remote origin: {args.repo_url}")
     print(f"Project created: {project_dir}")
     print(f"Active project: {args.id}")
     print(f"active_project_path: Projects_Repo/{args.id}/")
+    print(f"Specification: {json.dumps(args.specification, ensure_ascii=False)}")
 
 
 def cmd_use(args: argparse.Namespace) -> None:
@@ -305,9 +465,29 @@ def main() -> None:
     new = sub.add_parser("new", help="Create a new managed project and set it active")
     new.add_argument("id", help="project id, e.g. customer-service")
     new.add_argument("--name", required=True, help="human-readable project name")
-    new.add_argument("--type", default="unknown", choices=["web", "mobile", "unknown"])
+    new.add_argument("--type", default="unknown", choices=["web", "mobile", "api", "cli", "unknown"])
     new.add_argument("--repo-url", default=None, help="optional remote repository URL; configures git remote origin (git init + git remote add, no push) and is written to the registry")
+    specification = new.add_mutually_exclusive_group(required=True)
+    specification.add_argument("--specification", help="existing specification set name, e.g. default")
+    specification.add_argument("--no-specification", dest="specification", action="store_const", const=None, help="use no specification set; save JSON null and omit default runtime scaffolding")
     new.set_defaults(func=cmd_new)
+
+    onboard = sub.add_parser("onboard", help="Copy an existing local project or register its managed-directory copy")
+    onboard.add_argument("id")
+    onboard.add_argument("--name", required=True)
+    onboard.add_argument("--type", required=True, choices=["web", "mobile", "api", "cli"])
+    onboard.add_argument("--from-path", required=True)
+    onboard.add_argument("--mode", required=True, choices=["copy", "register"])
+    onboard.add_argument("--repo-url", default=None)
+    onboard_spec = onboard.add_mutually_exclusive_group(required=True)
+    onboard_spec.add_argument("--specification")
+    onboard_spec.add_argument("--no-specification", dest="specification", action="store_const", const=None)
+    onboard.set_defaults(func=cmd_onboard)
+
+    remove = sub.add_parser("remove", help="Move one project to an external backup and remove its registration")
+    remove.add_argument("id")
+    remove.add_argument("--backup-dir", required=True)
+    remove.set_defaults(func=cmd_remove)
 
     use = sub.add_parser("use", help="Set active project")
     use.add_argument("id", help="project id")

@@ -1,462 +1,122 @@
-# 开发循环协议（Development Loop）
+# 开发循环协议
 
-本协议是 SDD V7_2 多智能体开发循环的唯一权威定义，位于 `harness-core/protocols/`，由三端共同引用。
+本协议承接已确认的 `docs/PRD.md`、`docs/tech-spec.md` 及用户的开发意图。风格文档与原型按项目实际情况引用，不要求无界面项目生成，也不要求逐功能计划。
 
-触发方式为语义路由，无命令层：当用户表达「开始开发 / 进入开发阶段 / 继续多智能体开发 / 继续 tasks.json 里的任务」等明确开发意图，且产品设计产物已齐全时，Harness Router（`harness-core/router.md`）直接路由到本协议。
+编排器按 Planner → Developer → Tester 推进，`.sdd/tasks.json`（路径：`<active_project_path>/.sdd/tasks.json`）是唯一开发任务状态来源。使用当前平台实际可用的子智能体能力，不编造工具接口；平台不支持时按角色顺序执行，仍保留实现与独立验收的边界。
 
-进入本协议后，项目进入开发模式。你将成为 Development Orchestrator，调度 Planner、Developer、Tester 三个子智能体协作完成全部开发任务。
+## 进入与恢复
 
-**开发模式采用人工门禁驱动。**
+1. 确认项目绝对路径，读取 `.sdd/project.json`；只在当前项目内操作，保留已有未提交改动。
+2. 项目记录中的 `specification` 是唯一权威。非空字符串对应所选集，JSON `null` 表示全流程不使用规范集；缺失、空字符串或类型错误时补充确认，不默认回落任何集。
+3. 检查 PRD、tech-spec 已确认。确认记录或当前会话的明确确认均可作为依据；仅有文件不代表获批，不重新索取已有授权。
+4. 首次开发在七层技术方案及必要的阶段 B 界面设计完成并确认之后按 [子智能体协议](codex-subagents.md) 实际派发 Planner，取得真实实例标识，收到其结果后再核对计划并派 Developer；Planner 划分 Feature 与任务，一次生成完整 tasks（路径：`<active_project_path>/.sdd/tasks.json`）。已有 tasks 先恢复进度，不重新生成或抹掉验收记录；没有 `features` 的旧计划按原引用执行，不强制迁移。过期的 `in_progress/testing/fixing` 先核对是否仍有运行中的 Agent，再依据实际产物和证据恢复。
+5. `.sdd/tasks.json.specification` 必须与项目记录一致；不一致时暂停相关派发，核对项目选择并修正任务引用，不能依赖 tasks 或 tech-spec 覆盖项目记录。
+6. 规划后展示摘要。已授权按确认方案开发时直接执行；用户只要求规划时等待开发授权。后续常规 PASS 不逐功能询问；前端 Mock 用户门禁必须按下文暂停，初始开发授权不能代替门禁确认。
 
-关键门禁点：
-1. Planner 产出开发清单后 → **必须经用户确认**
-2. 每个功能 Developer + Tester 循环完成后 → **必须经用户确认是否继续下一个功能**
+## 角色与写入边界
 
-进度报告不是通知，是门禁。每个门禁点必须明确询问用户，得到确认后才能继续。
+| 角色 | 读取 | 产出与权限 |
+|---|---|---|
+| Planner | 项目记录、PRD、tech-spec、实际存在的相关风格文档与原型 | 首次生成 tasks（路径：`<active_project_path>/.sdd/tasks.json`）；后续只提出受影响任务的规划变更 |
+| Developer | 当前任务、`context_files` 指定章节、`rules_files`、相关代码、当前失败证据 | 实现代码、相关测试和运行说明；返回修改文件、自查结果及限制，不修改 tasks 状态 |
+| Tester | 同一任务的上下文、实现及依赖结果 | 独立验证，返回 PASS/FAIL/BLOCKED、逐 AC 证据及失败项；较长证据才写 `.sdd/test-reports/test-<task-id>.md`（路径：`<active_project_path>/.sdd/test-reports/test-<task-id>.md`），不修改 tasks 状态 |
+| 编排器 | 项目记录、tasks、结果摘要及必要的确认记录 | 唯一维护 tasks（路径：`<active_project_path>/.sdd/tasks.json`）的执行状态、计数与 notes；调度、合并变更、报告进度，不代替 Tester 宣判通过 |
 
----
+编排器只接收当前任务所需摘要；业务实现细节由 Developer 处理，具体证据由 Tester 验证。编排器是项目经验的唯一写入者；跨项目经验按用户授权维护，不自动复制到 Harness 全局。
 
-## 前提条件
+## 派发前校验
 
-以下文件必须存在（由产品设计阶段生成）：
-- `docs/PRD.md`
-- `docs/feature-map.md`
-- `docs/domain-model.md`
-- `docs/data-model.md`
-- `docs/api-contracts.md`
-- `docs/Plan.md`
-- 全部 MVP `docs/features/*/spec.md`
-- 全部 MVP `docs/features/*/plan.md`
-- 已确认原型
+- 首次接收计划时，复核 Planner 的验收推演与缺 Key 推演摘要：每个任务应能仅凭自身与已通过前置任务完成其 AC，独立能力不被无关服务阻塞。发现依赖后续产物或上下文缺失，交 Planner 定向修正；不重跑整套需求设计。后续仅在任务或依赖变化时复核受影响部分。
+- 首次派发任务时，编排器按当前模块/工具/问题关键词定向检索项目经验（路径：`<active_project_path>/.sdd/experience.md`），将适用条目的标题与路径带给 Developer/Tester。缺文件或无匹配就继续，同任务后续派发复用；不扫描目录或全量读取。经验使用边界按 [错误与经验闭环](experience-loop.md) 的“下一次如何使用”。
+- 框架一致性脚本只检查框架引用与模板，不作为每次派发的必跑步骤。每次实际派发前使用 `scripts/sdd_dispatch.py --tasks <active_project_path>/.sdd/tasks.json`（脚本路径：`<harness_root>/scripts/sdd_dispatch.py`），检查当前任务与门禁候选；校验失败先修正规划，不绕过门禁。脚本只读当前 JSON，不遍历项目库。
+- 新计划提前承担全项目基础设施的任务交 Planner 重新划分，初始化并入首次使用它的阶段任务。前端阶段允许没有可独立完成的业务 AC，但必须有明确 technicalChecks、相关 AC 的后续验收任务；不在派发提示词中临时补造或弱化验收。
+- 派发前核对必要产物与 `write_scope` 一致，包括根目录质量配置等共享文件。范围为空或漏项时，由编排器在已有授权内补齐并明确唯一写入者，再派发；串行不能代替写入范围，也不能让 Developer 改变规范要求的文件位置来绕过范围。
+- 计划必须包含本轮最终页面功能 HTML 交付任务；缺少时交 Planner 补齐，不由编排器临时写页面。按 [项目交付规范](project-delivery.md) 核对依赖和 DEL 检查，沿用正常 Developer → Tester 派发；只向交付任务传该规范的实际绝对路径。
+- 新任务的 `source_feature` 必须存在于 tasks 顶层 `features`，其 `source_requirements` 指向 PRD 的需求，AC 与 PRD 一致；旧计划沿用原 `source_feature` → PRD 引用。均不得超出已确认范围，任务依赖全部存在且无环。唯一来源例外为框架交付的 `F-DELIVERY / SDD-DELIVERY / DEL-*`，依据项目交付规范，不伪造 PRD 条目。
+- `source_files` 必含 PRD、tech-spec，可包含实际存在的 `ui_style` 与 `prototype`；每个 `context_files` 都指向真实文件与精确章节/页面。界面任务有风格文档时必须引用相关章节并核对已确认；没有原型不阻塞。
+- 有相关 `docs/decisions.md` 时仅引用对应决策章节；核对影响本任务的重大体验取舍已有用户确认，或在用户明确委托范围内作出并记录依据，结果已进入方案及 AC 或技术检查；不能把待确认建议直接派发为实现要求。
+- `rules_files` 仅使用所选规范集的实际文件路径；相对 `harness_root/harness-core/` 解析。例如选择 default 时可引用 `specification/default/backend/api-design.md`，自定义集引用自己的文件。项目选 `null` 时必须为空数组，不加载规范集。
+- 核对 `external_services` 与 tech-spec 配置及验证要求。配置键可以记录，真实密钥只在指定配置中使用，不进入任务、文档、报告或日志。
+- 必要服务权限缺失时先标明受影响的具体步骤。若任务依赖已满足，仍有已授权且不依赖 Key 的本地实现或局部验证，允许正常派发；只有当前确实没有可推进部分时才置 `blocked`，不反复触发无效付费调用。
 
-如果有任一文件缺失，停止并提示用户补齐。
+## 派发信息
 
----
+固定角色规则只引用 `harness-core/agents/developer.md` 或 `harness-core/agents/tester.md`；按下表组装本次输入，不复制整个角色文件、不让接收者重新路由。路径替换为实际绝对路径，内容沿用任务和已有确认，不临时添加产品约束。
 
-## 编排器身份约束（必须遵守）
+| 信息 | 派发内容 |
+|---|---|
+| 公共信息 | 角色、`harness_root`、`active_project_path`、任务 ID 与当前任务字段、已有授权、服务配置状态与限制、必要前置成果；提供已核对的解释器/环境与底座调用入口，不传密钥 |
+| 首次实现 | 当前目标、验收要求、明确的写入范围；返回修改文件、自验证据、未完成 AC 与阻塞 |
+| 首次验收 | 同一任务，加 Developer 改动路径、自验结果与证据位置、未完成项、工作区与变更基线；提供已验证可用的浏览器工具或解释器/命令、Mock 模式、URL/端口及资源归属。明确前端阶段或完整业务验收，按检查项返回结果；不额外加“所有自验必须重跑” |
+| 修复 / 复验 | 原任务，加上轮失败 AC、预期与实际、复现步骤、证据及本轮修改；复验失败项与直接影响路径 |
+| 阻塞恢复 | 已完成成果、未验 AC、已解除的阻塞；仍需实现交 Developer，仅缺验收交 Tester |
 
-你是 Orchestrator，不是 Developer。你的上下文只存：项目状态、任务状态、文件路径。
+变更基线记录所在工作区与当前提交（有 Git 时），另附本轮相关未提交差异的摘要或指纹，不强制提交 Git。Tester 核对实际运行实例；验收中或验收后相关实现变化，受影响证据需重新取得，不能把旧 PASS 用于新实现。
 
-**禁止：**
-- 不要阅读代码文件的具体内容（让 Developer/Tester 读）
-- 不要阅读完整测试报告内容（只看 PASS/FAIL 结果）
-- 不要自己写代码
-- 不要修改 PRD、Feature Map/Spec、Domain/Data Model、原型、Feature/Global Plan 或 API 契约（它们是产品设计阶段的产物）
-- 不要跳过 Tester 验证
+## 前端 Mock 用户门禁
 
-**允许：**
-- 读 `.sdd/tasks.json` 的状态字段
-- 读测试报告的结论行（PASS/FAIL）
-- 更新 tasks.json 的状态字段
-- 向用户报告进度
+有前端任务时读取 [前端门禁](frontend-gate.md)（路径：`<harness_root>/harness-core/protocols/frontend-gate.md`），Planner 在最后一个前端收口任务设置唯一 `user_gate`。该任务通过 Tester 时，先关闭整个项目的新派发，交用户验收 Mock 并完成后端 API 配置；在途后端仅收尾，不能再派 Tester、修复或下一个任务。用户明确认可且必要配置确认后恢复。此门禁优先于以下“立即派发”“局部工作可继续”和有限返工规则；已有任务通过不等于用户门禁通过。
 
----
+## 调度与并行
 
-## 执行流程
+有界面的新项目优先派发已就绪的前端任务，同时派发依赖满足且写入范围不冲突的后端任务；前端阶段完成不是后端开工门槛。前端按契约 Mock 验收，后端按任务验证实际接口，相关成果通过后再真实联调。后端开发期间，前端样式收口可在独立窗口继续。已有项目局部修改、无界面项目按实际范围与依赖执行。
 
-### 第零步：外部服务与 Tester 权限门禁（必须）
+编排器向前端调整窗口交接项目路径、对应任务、已确认风格及 API 契约、允许修改文件、另一个窗口的写入范围和返回要求。只允许写入范围不冲突的任务并行；后端改动涉及前端 API client、共享类型或配置时，先协调唯一写入者。各窗口返回结果，由同一个编排器维护 tasks 状态。
 
-正式进入 Planner / Developer / Tester 自动化开发循环之前，必须先完成外部服务清单确认。
+1. 每轮先读取派发脚本的门禁与候选结果；门禁等待用户时立即停止补派并交接，不进入普通就绪队列。门禁未通过前不派真实联调或交付；对脚本允许的候选汇总 `status=pending` 且依赖均为 `passed` 的任务，按 `priority` 排序，前端优先；优先级只决定派发顺序，不要求低优先级任务等待高优先级任务完成。
+2. 核对实际可用子智能体名额及运行/验收任务的文件占用，在名额内逐个派发相容的就绪任务。跳过暂有冲突的任务，继续检查其他候选；不得派一个任务就立即等待，导致可并行工作闲置。派发成功并取得实际标识后写 `in_progress`，由编排器记录任务与实例对应关系。
+3. 共享配置、锁文件、类型声明、路由注册等指定唯一写入者；范围不明先补齐，相交时串行。Tester 正在验收的代码与运行资源也不得被并发修改；独立 worktree 仍需检查最终集成冲突。
+4. 按“派发信息”提供当前阶段所需内容；完成当前可用名额内的派发后，再使用平台实际能力等待任一运行任务返回，不固定等待最先启动的任务。没有可用并行能力时明确说明并串行执行，不虚构并行。
+5. 任一 Developer 返回完成结果或可验证的局部成果后，立即处理其结果并置 `testing`，有名额、验收对象稳定且门禁允许时交 Tester；不等待其他无关 Developer 完成。Tester 返回后按下节更新状态，优先检查是否触发门禁；未被门禁阻止时才重新检查就绪队列、可用名额及写入冲突；只有依赖 passed 才解锁后续任务。
+6. 并行成果合入最终工作区后，由编排器向 Tester 提供最终工作区、变更基线、受影响 AC 与原证据，复验受影响的接口和跨模块链路；只有隔离工作区通过、尚未完成集成验证时不标记最终通过。局部验证记录已验、未验 AC 及缺项，不能直接置 passed。
+7. 子智能体显示 Stopped、失败或状态不明时，按 [子智能体协议](codex-subagents.md) 核对实际状态与已有成果，不能一直等待已终止实例。没有运行任务且没有可派发任务时，汇总真正阻塞项；用户要求暂停时停止补派，不制造空等或无限重试。
 
-执行步骤：
+## 验收与有限返工
 
-1. 读取 `docs/PRD.md`、`docs/feature-map.md`、`docs/domain-model.md`、`docs/data-model.md`、全部 MVP Feature Spec/Plan、`docs/api-contracts.md`、`docs/Plan.md`
-2. 提取所有外部服务依赖，包括但不限于：
-   - LLM / Embedding / Reranker / OCR / 语音 / 支付 / 短信 / 邮件 / 对象存储 / 地图 / 第三方登录 / Webhook
-   - 数据库、向量库、Redis、消息队列等非本地默认服务
-   - 任何需要 API Key、账号、Base URL、回调地址、测试环境或白名单的服务
-3. 对每个服务列出：
-   - 服务名称
-   - 用途
-   - 需要的配置项名称（写入 `.env.example` / 前端 `.env.example` 的字段名）
-   - 是否为 MVP 必需
-   - Tester 完整联调需要的权限或测试账号
-   - 缺失时是否允许 Mock/fallback，以及允许降级的影响
-4. 向用户一次性索取必要配置。不要让 Developer / Tester 在后续任务中零散追问。
+`max_retries` 是首次实现之后允许的自动返工轮数，默认每任务 `2`。`retry_count` 初始为 `0`，由编排器每次派发修复前增加一次。
 
-门禁规则：
+| 结果 | 编排器动作 |
+|---|---|
+| Tester PASS，全部任务验收有真实证据 | 置 `passed`，notes 记录 AC 验证摘要与输出引用，有报告时附路径，继续满足依赖的任务 |
+| Tester FAIL，`retry_count < max_retries` | 置 `fixing`，增加计数，附失败 AC、复现方式及证据派 Developer 定点修复；返回后置 `testing` 并复验 |
+| Tester FAIL，已用完返工额度 | 置 `blocked`，记录最后失败项及已尝试修复，不自动重置计数 |
+| Developer/Tester BLOCKED | 先核对是否还有已授权、不依赖缺项的工作；有则继续该任务并交 Tester 局部验证。可做部分完成后才置 `blocked`，记录已实现内容、局部证据、未验 AC、缺项及下一步；不能记成 PASS |
+| Tester 未给清晰结论或缺少证据 | 保持 `testing`，要求补齐当前验收；仍无法取得必要证据则置 `blocked`，不靠重复确认放行 |
 
-- 如果 MVP 必需服务缺少 Key / 测试账号 / 权限，必须暂停并向用户说明缺失项
-- 用户提供后，才能进入 Planner
-- 如果用户明确选择暂不提供，则必须记录为“降级开发模式”：后续相关任务只能标记 Mock/fallback 验收，Tester 不得宣称真实外部服务完整联调通过
-- 不得把真实 Key / Token / Secret 写入 `docs/**`、`.sdd/**`、`README.md`、完成报告、测试报告、BUG 日志、经验记录、`tasks.json` 或任何 `.md` / `.json` 可读产物；只能写入对应 `.env` 等配置文件，文档中只记录字段名和配置状态
+每次验证在 tasks（路径：`<active_project_path>/.sdd/tasks.json`）的 `notes` 保留简短轮次、AC 结果与证据摘要，后续 PASS 不覆盖此前失败事实；较长证据才落一份任务报告（默认路径：`<active_project_path>/.sdd/test-reports/test-<task-id>.md`，有派发路径时沿用其项目内绝对位置），notes 引用其路径，不强制每任务新建文件。编排器串行写 tasks，避免多个 Agent 覆盖状态。
 
-### 第零一步：报告项目路径（非门禁）
-
-复述你即将操作的项目信息。这一步只是透明报告，不等待用户确认，不得暂停流程：
-
-```
-我即将为 [项目名] 启动多 Agent 开发。
-项目路径：Projects_Repo/<project-id>/
-前端代码：<project-path>/frontend/
-后端代码：<project-path>/backend/
-```
-
-外部服务门禁完成后，报告项目路径并立即进入 Planner，不要再询问“是否开始/是否继续”。
-
-### 第一步：启动 Planner
-
-调用 Planner 子智能体生成 tasks.json：
-
-```
-Task({
-  description: "拆分开发任务",
-  prompt: "项目路径：<active_project_path>\n项目类型：<web/mobile>\n\n读取 docs/PRD.md、docs/feature-map.md、docs/domain-model.md、docs/data-model.md、docs/features/*/spec.md、docs/features/*/plan.md、docs/api-contracts.md、docs/Plan.md、docs/ui-design-spec.md、docs/prototypes/（含 design-tokens.md），生成 .sdd/tasks.json。不得重新发明 Feature 边界或验收标准。Web 项目的前端/integration 任务：description 必须写明对应原型锚点（如 docs/prototypes/index.html#emp-consult），rules_files 必含 docs/ui-design-spec.md 与 docs/prototypes/design-tokens.md（视觉权威源，见 planner.md 的 rules_files 分配表），acceptanceCriteria 必含至少一条视觉对齐项。",
-  subagent_type: "planner",
-  run_in_background: false
-})
+```text
+pending → in_progress → testing → passed
+                         ↓ FAIL
+                       fixing → testing（至多 max_retries 轮）
+                         ↓ 无法修复或缺少必要条件
+                       blocked
 ```
 
-### 第二步：验证 tasks.json 并触发用户门禁
+`blocked` 不自动重新进入调度。权限、环境、依赖或授权范围实际改变后，复用原任务及产物：剩余实现需要开发时恢复 `pending`，只缺真实验收时恢复 `testing` 并派 Tester；不重建已 `passed` 的前置任务。累计重试不清零，扩大返工额度需要明确决定。
 
-Planner 完成后，读取 `.sdd/tasks.json`，检查：
+## 修复后的经验沉淀
 
-1. 开发顺序是否符合 Plan.md 中的计划顺序
-2. 每个任务的 description 是否足够清晰
-3. `rules_files` 解析校验：`rules_files` 中的 `specification/<集名>/...` 解析为 `harness-core/specification/<集名>/...`：集名优先取 `.sdd/tasks.json` 顶层 `specification` 字段，字段缺失时读取当前项目 `docs/tech-spec.md` 头部 `specification:` 声明，均未声明回落 `default`；解析后的规范文件不存在必须停下报出，禁止静默降级。`docs/...` 前缀解析为当前项目目录下的设计产物
-4. 每个任务的 `source_feature` 是否引用 Feature Map 中存在的 Feature ID
-5. 每个任务的 acceptanceCriteria 是否保留对应 Feature Spec 的 AC ID，且没有新增、扩大或弱化 AC
-6. dependencies 是否合理（无循环依赖，且不违背 Feature 依赖图）
-7. Web 项目的后端业务任务是否包含任务内真实联调标准：
-   - 如果任务对应已有前端页面或 `frontend/src/services/*`，必须有 `frontendIntegration.required=true`
-   - acceptanceCriteria 必须包含 `VITE_USE_MOCK=false`、真实后端 API、页面无 `[Mock]` 或等价真实联调检查
-   - 不能把“后续统一联调”作为该任务通过条件
-8. Web 项目的前端/integration 任务是否携带视觉权威源：
-   - `rules_files` 是否包含 `docs/ui-design-spec.md` 与 `docs/prototypes/design-tokens.md`（缺失 → 直接补上，不需重调 Planner）
-   - `description` 是否写明原型锚点路径（如 `docs/prototypes/index.html#emp-consult`，缺失 → 直接补上）
-   - `acceptanceCriteria` 是否至少含一条视觉对齐项、`technicalChecks` 是否含「样式取值与 design-tokens.md 一致」（缺失 → 直接补上）
+发生错误或复验修复时才加载 [错误与经验闭环](experience-loop.md)（路径：`<harness_root>/harness-core/protocols/experience-loop.md`）。Developer 返回根因与经验建议，Tester 核对验证依据；每次有效修复经复验后，编排器都判断是否值得复用。包括 Developer 自验中已修好的问题，不只处理 Tester 曾判 FAIL 的问题。
 
-如果有问题，直接修正 tasks.json（不需要重新调 Planner）。
+已验证且可复用则去重更新项目经验（路径：`<active_project_path>/.sdd/experience.md`）；一次性问题不新增，原因未证实或未复验只保留错误事实。在原任务 notes 简注落盘条目、已合并或不新增的原因；经验建议证据不足不阻塞本已通过的功能。跨项目候选、无 tasks 的独立 Bugfix 和同类复发均按该协议处理，不新建状态或沉淀任务。
 
-**验证完成后，触发第一个用户门禁**：
+## 真实验收边界
 
-向用户展示开发清单摘要：
+- Tester 逐项对应 `acceptanceCriteria` 的 AC ID 提交操作、输入、实际结果及证据；同时执行适用的 `technicalChecks`。明确的前端阶段任务可按本阶段检查置 passed，notes 标注“前端阶段通过、Mock 范围、后续业务 AC 所在任务”；Feature 完成须另核对完整业务 AC 的真实证据，不能用前端阶段 PASS 代替。
+- 验收通过须覆盖该任务完整用户结果及必要异常路径。需要界面时验证实际页面；需要后端、持久化或外部服务时证明请求和结果确实经过对应链路。
+- Mock、静态截图或模拟外部响应，只能证明相应范围；不得替代真实链路要求。未执行、权限不足、手动验收尚缺等均明确标记，不能宣称全部通过。
+- 用户授权先做本地部分或允许 fallback 时，在原任务内完成相应实现与局部验证，不改 AC；可做部分完成后，仍缺真实服务验收才置 `blocked`。局部实现发现的 FAIL 仍按有限返工处理，不能被缺 Key 掩盖；改变验收范围须先明确变更并同步设计与任务。
+- 按已确认技术栈执行必要的安装、构建和测试，设置有限超时并清理本轮临时进程；规范为 `null` 也不省略实际验证。
+- 项目内已授权的常规操作自行执行；缺少权限、需要超出既有授权的外部付费操作或发布等，只暂停依赖该操作的工作并说明具体缺项。
 
-```markdown
-## 开发清单已生成
+## 变更、暂停与结束
 
-**项目**：[项目名]
-**总任务数**：[X]
-**后端任务**：[Y]
-**前端任务**：[Z]
-**集成任务**：[W]
-
-### 任务概览（按优先级排序）
-
-| 序号 | 任务ID | 类型 | 标题 | 依赖 |
-|------|--------|------|------|------|
-| 1 | T-001 | backend | 数据库Schema+基础设施 | 无 |
-| 2 | T-002 | backend | 用户认证功能 | T-001 |
-| ... | ... | ... | ... | ... |
-
-**是否按此清单开始逐个功能开发？**
-- 回复「开始」→ 进入第一个功能开发
-- 回复「调整」→ 说明需要修改的地方，我修正 tasks.json
-- 回复「暂停」→ 保存当前状态，下次继续开发时由 Router 重新进入本协议
-```
-
-**未经用户确认「开始」或等效表达，不得进入开发循环。**
-
-### 第三步：逐功能开发循环（每功能完成后触发用户门禁）
-
-```
-WHILE 存在未完成的任务 DO:
-
-  1. 选择下一个任务
-     - 筛选：status = "pending" AND NOT blocked AND dependencies 均已 passed
-     - 排序：按 priority 升序
-     - 如果没有可执行任务且仍有 pending 任务 → 检查是否有循环依赖
-
-  2. 更新状态：status = "in_progress"
-
-  3. 调用 Developer 子智能体（prompt 按任务 type 追加必读清单——前端/后端输入不同）
-
-     基础 prompt（所有任务通用）：
-     ```
-     Task({
-       description: "开发任务 [Task-ID]",
-       prompt: "项目路径：<active_project_path>
-     项目类型：<web/mobile>
-     任务 ID：[Task-ID]
-     任务详情：见 .sdd/tasks.json
-     请读取 .sdd/experience.md 和任务中 rules_files 指定的规范文件。
-     注意：rules_files 中的 specification/<集名>/... 解析为 harness-core/specification/<集名>/...：集名优先取 .sdd/tasks.json 顶层 specification 字段，字段缺失时读取当前项目 docs/tech-spec.md 头部 specification: 声明，均未声明回落 default；解析后的规范文件不存在必须停下报出，禁止静默降级。docs/... 前缀解析到当前项目目录。
-     <按任务 type 追加的必读清单，见下方分流规则>",
-       subagent_type: "developer",
-       run_in_background: false
-     })
-     ```
-
-     **分流规则 A——任务 type = `frontend`，或 type = `integration` 且 `frontendIntegration.pages` 非空**，追加：
-
-     ```
-     本任务涉及前端页面，开工前必读视觉权威源（缺一不得写码）：
-     - docs/prototypes/ 下本任务页面对应的原型 section（锚点见任务 description，如 docs/prototypes/index.html#emp-consult；格式不限，HTML 原型同样必须打开对照）
-     - docs/prototypes/design-tokens.md（B2 权威取值表：色值/字号/圆角/间距逐项照抄，禁止近似值）
-     - docs/ui-design-spec.md（界面清单与关键 UX 规则）
-     布局、配色、间距、圆角、字体与全部文案以原型 + design-tokens.md 为唯一权威，禁止凭感觉近似或自由发挥。
-     ```
-
-     **分流规则 B——任务 type = `backend` 且不涉及前端页面**，追加：
-
-     ```
-     本任务为后端任务：对照 docs/api-contracts.md 与 docs/data-model.md 对应章节实现，遵守 rules_files 中的 backend 规范件（tech-stack / layers / api-design / error-handling，AI Agent 任务含 plugin）。
-     ```
-
-  4. Developer 返回后，更新状态：status = "testing"
-
-  5. 调用 Tester 子智能体
-     Task({
-       description: "验证任务 [Task-ID]",
-       prompt: "项目路径：<active_project_path>
-任务 ID：[Task-ID]
-验收标准：见 .sdd/tasks.json 中该任务的 acceptanceCriteria
-Developer 产出的文件：[从 Developer 返回中提取文件列表]",
-       subagent_type: "tester",
-       run_in_background: false
-     })
-
-  6. 读取 Tester 结果（Tester 会直接更新 tasks.json 的 status 和 notes）
-     - 读取 tasks.json 中该任务的 status
-
-  6.5. 系统级经验回传（仅在 FAIL 时执行）
-     - 如果 status = "fixing"（FAIL），读取 `.sdd/test-reports/test-[task-id].md`
-     - 搜索报告中的 `## 系统级经验` 章节
-     - 如果存在：
-       1. 读取该章节内容（类型、问题摘要、影响范围、建议规则）
-       2. 追加到 `<harness-root>/memory/harness-experience.md`
-       3. 追加格式：
-          ```markdown
-          ## [YYYY-MM-DD]｜[问题摘要]
-
-          - **来源**：[项目名称] [Task-ID] Tester 验证
-          - **类型**：[框架/规范/重复/对齐]
-          - **经验**：[问题摘要]
-          - **规则**：[建议规则]
-          ```
-       4. 在功能完成报告的「经验更新」中注明：「已回传系统级经验到 harness-experience.md」
-     - 如果 harness-experience.md 中已存在同类经验（近 30 天内同一类型），改为补充或更新原有条目，不重复新建
-
-  7. 分支处理（FAIL 自动修复，PASS/BLOCKED 才触发用户门禁（若User_gate为false，此规律无效））
-
-     ```
-     IF status == "passed":
-       → 触发用户门禁（功能完成，询问是否继续下一个）
-
-     ELSE IF status == "fixing" AND retry_count < 3:
-       → 自动修复，不触发用户门禁
-       → retry_count++（编排器更新 tasks.json）
-       → 向用户简短报告 FAIL 结果（一行通知，不是门禁）
-       → 直接调用 Developer 修复（prompt 中附带 test-report 路径）
-       → 修复完成后再调用 Tester 复验
-
-     ELSE IF status == "fixing" AND retry_count >= 3:
-       → 标记 blocked，触发用户门禁（需要人工介入）
-     ```
-
-     ---
-
-     ### 分支 A：PASS → 触发用户门禁
-
-     向用户报告当前功能结果：
-
-     ```markdown
-     ## 功能完成报告
-
-     **任务**：[Task-ID] [任务标题]
-     **结果**：PASS
-     **测试报告**：.sdd/test-reports/test-[task-id].md
-
-     ### 修改/新增文件
-     - [文件列表]
-
-     ### 经验更新
-     - [如有新增经验，简述]
-
-     **下一步请选择：**
-     - 回复「推送并继续」→ 将本次修改提交并推送到 Git，然后进入下一个功能
-     - 回复「提交但不推送」→ 将本次修改提交到 Git（不推送），然后进入下一个功能
-     - 回复「继续」→ 不执行 Git 操作，直接进入下一个功能
-     - 回复「暂停」→ 保存状态，下次继续开发时由 Router 重新进入本协议
-     ```
-
-     **必须等待用户明确回复后才能继续。**
-
-     #### Git 操作（用户选择推送/提交时）
-
-     编排器读取 `harness-core/skills/git-workflow/SKILL.md`，执行：
-
-     - **「推送并继续」**：
-       1. 暂存当前功能相关文件（排除 `.sdd/` 状态文件、`.env`等用户隐私文件）
-       2. 生成 commit message：`{type}: {功能描述}\n\n- 任务: {Task-ID} {标题}`
-       3. `git commit`
-       4. 检查 remote → 有则 `git push`；无则先读 `.sdd/project.json` / `project-registry.json` 的 `repo_url` 补配 origin 后推送；仍无 → 告知用户「未配置远程仓库」，提供地址现在配或改选「提交但不推送」，不得静默跳过
-       5. 报告推送结果，然后进入下一个任务
-
-     - **「提交但不推送」**：
-       1. 暂存并提交（同上，不执行 push）
-       2. 报告 commit 结果，然后进入下一个任务
-
-     - **「继续」**：
-       1. 直接标记任务 passed
-       2. 进入下一个任务
-
-     ---
-
-     ### 分支 B：FAIL + retry_count < 3 → 自动修复（不触发门禁）
-
-     1. retry_count++（更新 tasks.json）
-     2. 向用户发送一行通知（不是门禁，不等待回复）：
-        ```text
-        [Task-ID] 测试 FAIL，第 [retry_count] 次自动修复中...
-        ```
-     3. 调用 Developer 修复：
-        ```
-        Task({
-          description: "修复任务 [Task-ID]",
-          prompt: "项目路径：<active_project_path>
-        任务 ID：[Task-ID]
-        这是第 [retry_count] 次自动修复。
-        测试报告（当前轮次）：.sdd/test-reports/test-[task-id].md
-        BUG 日志（完整返工历史）：.sdd/bug-logs/[task-id].md
-        请读取测试报告和 BUG 日志，理解 Tester 指出的具体问题，针对性修复。不要重写整个功能。
-        特别注意事项：
-        - 读取 BUG 日志，确认这是第几次返工、历史上有哪些同类问题
-        - 如果本轮问题与历史问题属于同类（如连续两次都是 lint / SDK 结构 / 字段命名），修复后必须在 .sdd/experience.md 中标注 [SYSTEM] 建议更新规则
-        - 修复后严格对照 developer.md 的「输出前必查清单」逐项确认
-        - 若本任务涉及前端页面：修复时必须重新对照 docs/prototypes/ 对应原型 section 与 docs/prototypes/design-tokens.md 取值表核对视觉与文案，不得只改功能不改样式
-        同时读取 .sdd/experience.md 和 rules_files 指定的规范文件。
-        注意：rules_files 中的 specification/<集名>/... 解析为 harness-core/specification/<集名>/...：集名优先取 .sdd/tasks.json 顶层 specification 字段，字段缺失时读取当前项目 docs/tech-spec.md 头部 specification: 声明，均未声明回落 default；解析后的规范文件不存在必须停下报出，禁止静默降级。docs/... 前缀解析到当前项目目录。",
-          subagent_type: "developer",
-          run_in_background: false
-        })
-        ```
-     4. Developer 返回后，回到步骤 5（调用 Tester 复验）
-     5. 如果再次 FAIL 且 retry_count < 3，继续本分支；如果 retry_count >= 3，进入分支 C
-
-     ---
-
-     ### 分支 C：FAIL + retry_count >= 3 → 触发用户门禁
-
-     1. 更新 status = "blocked", blocked = true
-     2. notes = "修复 3 次仍失败，需要人工介入"
-     3. 向用户报告阻塞原因：
-        ```markdown
-        ## 任务阻塞
-
-        **任务**：[Task-ID] [任务标题]
-        **结果**：BLOCKED（修复 3 次仍失败）
-        **测试报告**：.sdd/test-reports/test-[task-id].md
-
-        请选择：
-        - 回复「跳过」→ 跳过本任务，自动继续下一个可执行任务
-        - 回复「查看报告」→ 展示测试报告详情
-        - 回复「暂停」→ 保存当前状态，下次继续开发时由 Router 重新进入本协议
-        ```
-     4. **必须等待用户明确回复后才能继续**
-     5. 用户说「跳过」→ 标记 blocked，进入下一个任务
-     6. 用户说「暂停」→ 保存当前状态，退出循环
-
-     ---
-
-     ### 其他选项处理（仅在用户门禁时）
-
-     - 用户说「暂停」→ 保存当前状态，退出循环
-     - 用户说「调整任务」→ 根据用户反馈修正 tasks.json，重新确认后继续
-
-END WHILE
-```
-
-### 第四步：完成汇总
-
-所有任务处理完毕后，输出开发报告：
-
-```markdown
-## 开发完成报告
-
-**项目**：[项目名称]
-**总任务数**：[X]
-**通过**：[Y]
-**阻塞**：[Z]
-
-### 已完成功能
-- [列出所有 passed 的任务标题]
-
-### 需要人工介入
-- [列出所有 blocked 的任务 + 失败原因摘要]
-
-### 下一步
-- 生成 docs/startup.md（启动文档）
-- 用户业务验收
-- 发现问题可走 Bugfix 流程修复（`harness-core/skills/sdd-bugfix/SKILL.md`）
-```
-
----
-
-## 修复任务的调用方式
-
-当 Tester 报告 FAIL，需要 Developer 修复时：
-
-```
-Task({
-  description: "修复任务 [Task-ID]",
-  prompt: "项目路径：<active_project_path>
-任务 ID：[Task-ID]
-这是修复任务。测试报告在：.sdd/test-reports/test-[task-id].md
-请读取测试报告，理解 Tester 指出的具体问题，针对性修复。不要重写整个功能。
-若涉及前端页面：必须重新对照 docs/prototypes/ 对应原型 section 与 docs/prototypes/design-tokens.md 取值表核对视觉与文案。
-同时读取 .sdd/experience.md 和 rules_files 指定的规范文件。
-注意：rules_files 中的 specification/<集名>/... 解析为 harness-core/specification/<集名>/...：集名优先取 .sdd/tasks.json 顶层 specification 字段，字段缺失时读取当前项目 docs/tech-spec.md 头部 specification: 声明，均未声明回落 default；解析后的规范文件不存在必须停下报出，禁止静默降级。docs/... 前缀解析到当前项目目录。",
-  subagent_type: "developer",
-  run_in_background: false
-})
-```
-
----
-
-## 状态迁移
-
-```
-pending → in_progress → testing → passed ✅
-                               → fixing (retry < 3) → in_progress → testing → ...
-                               → blocked (retry >= 3) ⛔
-```
-
----
-
-## 异常处理
-
-| 情况 | 处理 |
-|------|------|
-| Developer / Tester 报告项目内依赖缺失 | 编排器直接执行项目目录内的依赖安装命令（如 `npm install`、`pnpm install`、`pip install -r requirements.txt`、`uv sync`），然后重试当前任务或测试；不得要求用户手动确认 |
-| `pytest-timeout` 插件缺失（pytest 无法带 `--timeout` 执行） | 编排器在项目虚拟环境内执行 `pip install pytest-timeout` 后重试测试；安装失败则该测试验证判定 BLOCKED 并向用户报告「缺 pytest-timeout，先装再测」。任何情况下不得放行不带 `--timeout` 的裸 pytest，不得在插件缺失时生成新测试脚本（门禁全文见 `specification/default/backend/tech-stack.md`「硬性禁止」） |
-| 依赖安装需要全局安装、`sudo`、系统设置、密钥、付费资源或长期服务 | 暂停并向用户说明风险，由用户确认后继续 |
-| Tester 完整联调缺少外部服务 Key / 测试账号 / 权限 | 暂停并向用户索取；如果用户选择不提供，标记该能力为 Mock/fallback 降级验收，不得宣称完整联调通过 |
-| Tester 报告模糊（无法判定 PASS/FAIL） | 暂停并向用户展示问题，由用户决定 |
-| 循环依赖 | 标记相关任务为 blocked，提示需要重新拆分 |
-| 所有剩余任务均 blocked | 输出完成报告，请求人工介入 |
-
----
-
-## 必须暂停的情况
-
-开发阶段以下情况必须暂停，等待用户确认后才能继续：
-
-1. PRD / API 契约 / 业务目标存在歧义，且 Planner 无法自行判断；
-2. 自动化开发前尚未确认外部服务清单，或 Tester 完整联调缺少必要服务 Key / 测试账号 / 权限；
-3. **Planner 产出开发清单后，必须经用户确认「开始」才能进入开发循环**；
-4. **每个功能（user_gate为true的功能） PASS 后，必须经用户确认才能推进下一个功能**（FAIL 且在重试次数内时自动修复，不触发门禁）；
-5. 同一任务自动修复 3 次仍失败并被标记为 blocked；
-6. 所有剩余任务均 blocked；
-7. 需要全局安装、`sudo`、系统设置、真实密钥、付费资源、部署发布或长期服务；
-8. 用户主动打断或要求暂停。
-
-**自动推进仅允许在 FAIL 自动修复时。** 当 Tester 报告 FAIL 且 retry_count < 3 时，编排器直接调用 Developer 修复，不等待用户确认。除此之外的节点（PASS、blocked、Planner 确认、外部服务清单确认）都必须报告用户并等待确认。
-
-## 约束
-
-- **串行执行**：一次只调度一个 Developer，等它完成并经过 Tester 验证、用户确认后再推进下一个任务
-- **不跳过验证**：即使 Developer 声称完成，也必须经过 Tester 独立验证
-- **不合并任务**：每个 Developer 调用只做一个任务，不要把多个任务塞进一次调用
-- **进度透明**：每完成一个功能向用户报告结果（PASS 时完整报告 + 门禁，FAIL 时一行通知 + 自动修复），不得静默推进
-- **每个功能是人机协作单元**：Developer 编码 → Tester 验证 → Orchestrator 汇总 → **用户确认（PASS/Blocked 时）或自动修复（FAIL 且 retry < 3 时）** → 下一个功能
+- 范围、AC、接口契约或技术方案出现实质冲突时先返回对应设计章节处理；实施细节按已确认方案决定，不另设常规确认点。
+- 开发中发现新的重大体验取舍，由编排器说明用户可感知的影响、选项与建议，沿用已有决定或向用户确认；必要时在 `docs/decisions.md`（路径：`<active_project_path>/docs/decisions.md`）追加 `D-001` 等记录并同步方案。只暂停依赖该决定的工作，普通实现细节不新增审批。
+- 经确认的设计变更交 Planner 提出受影响任务调整，编排器应用；保留旧结果和变更原因，受影响的已通过任务及必要下游任务重新验收。
+- 用户要求暂停时保存当前状态并停止新派发；继续时读取现有任务及证据，复用已有授权。
+- 交付前只核对本轮已复验修复是否完成经验判断，遗漏时补上去重/不新增结论；未证实项仍保留在原错误记录，不为收尾强写经验或遍历历史。
+- 所有任务通过后，编排器复核本轮 AC 覆盖及最终工作区证据；缺少最终集成证据或代码已变化时，派 Tester 补验相关完整链路，不能仅统计 passed 状态。不无条件重跑全部测试；必要验收通过后再交付运行方式、修改摘要、测试证据和实际限制。运行说明写入项目 README（路径：`<active_project_path>/README.md`），交付已由 Tester 验收的页面功能导航 HTML（路径：`<active_project_path>/docs/project-console.html`）及打开/刷新方式。HTML 仅为派生视图，不另建计划或重复进度数据源；未完成导航验收时不得漏掉该任务直接宣称本轮全部完成。
+- 有任何本轮必需任务 blocked 或关键 AC 未验收时，只报告已完成部分与未完成项，不宣称整个项目完成。
+- Git 提交、推送和发布按用户已有授权处理，不把每个功能后的 Git 菜单当作继续开发门禁。

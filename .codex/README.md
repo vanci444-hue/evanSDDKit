@@ -23,7 +23,6 @@
 - `planner` → `harness-core/agents/planner.md`
 - `developer` → `harness-core/agents/developer.md`
 - `tester` → `harness-core/agents/tester.md`
-- `solution-designer` → `harness-core/agents/solution-designer.md`（产品设计阶段 TS，B2 原型确认后由 Router 派出）
+- `solution-designer` → `harness-core/agents/solution-designer.md`（由设计主 Agent 按需派出，协助 PRD 对应的七层技术方案）
 
 如果当前 Codex 环境不支持自定义 subagent TOML，按 `harness-core/protocols/codex-subagents.md` 在主会话中模拟三角色边界。
-

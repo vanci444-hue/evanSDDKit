@@ -1,10 +1,10 @@
 """
 PyCore 配置系统。
 
-提供线程安全、类型安全的配置管理，支持 TOML 格式。
+提供线程安全、类型安全的配置管理，支持 TOML 和 dotenv 文件，不继承进程环境。
 """
 
-import os
+import json
 import threading
 import tomllib
 from abc import ABC, abstractmethod
@@ -69,23 +69,48 @@ class TomlConfigLoader(ConfigLoader):
             )
 
 
-class EnvConfigLoader(ConfigLoader):
-    """环境变量配置加载器。"""
-
-    def __init__(self, prefix: str = "PYCORE_"):
-        self.prefix = prefix
+class DotEnvConfigLoader(ConfigLoader):
+    """读取 dotenv 文件；不插值变量、不访问或写入进程环境。"""
 
     def supports(self, path: Path) -> bool:
-        return False  # 始终作为补充使用
+        return path.name == ".env" or path.name.startswith(".env.") or path.suffix == ".env"
 
     def load(self, path: Path) -> dict[str, Any]:
-        """从带前缀的环境变量加载。"""
+        # 仅 dotenv 文件需要该依赖，TOML 调用保持可用。
+        try:
+            from dotenv.parser import parse_stream
+        except ImportError:
+            raise ConfigurationError(
+                "Install python-dotenv>=1,<2 in the project environment",
+                config_path=str(path),
+            ) from None
         result: dict[str, Any] = {}
-        for key, value in os.environ.items():
-            if key.startswith(self.prefix):
-                # 将 PYCORE_DATABASE_URL 转换为 database_url
-                config_key = key[len(self.prefix) :].lower()
-                result[config_key] = value
+        try:
+            with path.open(encoding="utf-8-sig") as stream:
+                for binding in parse_stream(stream):
+                    if binding.error or (binding.key is not None and binding.value is None):
+                        raise ConfigurationError(
+                            f"Invalid dotenv entry at line {binding.original.line}",
+                            config_path=str(path),
+                        )
+                    if binding.key is None:
+                        continue
+                    key = binding.key.lower()
+                    if key in result:
+                        raise ConfigurationError(
+                            f"Duplicate dotenv key at line {binding.original.line}",
+                            config_path=str(path),
+                        )
+                    value = binding.value
+                    # 集合使用 JSON；标量仍由设置模型校验，保留字符串前导零。
+                    if value.lstrip().startswith(("[", "{")):
+                        try:
+                            value = json.loads(value)
+                        except ValueError:
+                            pass
+                    result[key] = value
+        except (OSError, UnicodeError):
+            raise ConfigurationError("Cannot read dotenv file", config_path=str(path)) from None
         return result
 
 
@@ -128,8 +153,8 @@ class ConfigManager(Generic[T]):
                     self._raw_config: dict[str, Any] = {}
                     self._loaders: list[ConfigLoader] = [
                         TomlConfigLoader(),
+                        DotEnvConfigLoader(),
                     ]
-                    self._env_loader = EnvConfigLoader()
                     self._config_path: Optional[Path] = None
                     ConfigManager._initialized = True
 
@@ -156,7 +181,7 @@ class ConfigManager(Generic[T]):
         config_path: str | Path,
         *,
         profile: Optional[str] = None,
-        use_env: bool = True,
+        use_env: bool = False,
     ) -> "ConfigManager[T]":
         """
         从文件加载配置。
@@ -165,9 +190,14 @@ class ConfigManager(Generic[T]):
             settings_class: 设置的 Pydantic 模型类
             config_path: 配置文件路径
             profile: 可选的配置文件名称（例如 'dev', 'prod'）
-            use_env: 是否使用环境变量覆盖
+            use_env: 仅保留兼容参数；传 True 会报错，禁止进程环境覆盖
         """
         path = Path(config_path)
+        if use_env:
+            raise ConfigurationError(
+                "Process environment overrides are disabled; use a configuration file",
+                config_path=str(path),
+            )
 
         # 查找合适的加载器
         loader = self._find_loader(path)
@@ -184,19 +214,14 @@ class ConfigManager(Generic[T]):
         # 处理配置文件（例如 [dev], [prod]）
         config_data = self._apply_profile(self._raw_config, profile)
 
-        # 使用环境变量覆盖
-        if use_env:
-            env_config = self._env_loader.load(path)
-            config_data = self._merge_config(config_data, env_config)
-
         # 创建设置实例
         try:
             self._settings = settings_class(**config_data)
-        except Exception as e:
+        except Exception:
             raise ConfigurationError(
-                f"Failed to validate configuration: {e}",
+                "Failed to validate configuration against the settings model",
                 config_path=str(path),
-            )
+            ) from None
 
         return self
 
@@ -209,8 +234,8 @@ class ConfigManager(Generic[T]):
         try:
             self._settings = settings_class(**config_dict)
             self._raw_config = config_dict
-        except Exception as e:
-            raise ConfigurationError(f"Failed to validate configuration: {e}")
+        except Exception:
+            raise ConfigurationError("Failed to validate configuration against the settings model") from None
         return self
 
     @property

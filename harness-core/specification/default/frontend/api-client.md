@@ -11,6 +11,7 @@
 - 在 **响应拦截器** 中统一处理 401 等；禁止在每个页面重复写一套错误处理。
 - 业务接口方法写在 `services/*.ts` 中，**禁止在组件内直接** `axios.get('/...')`。
 - `baseURL` **禁止**硬编码 `http://localhost:8000`，须来自 `import.meta.env`。
+- 拦截器在模块层注册一次，不在 React 组件渲染时反复注册；普通 service 模块不能调用 React Hooks。认证处理仅适用于项目确有登录需求时，凭据存储方式按项目技术方案确定。
 
 **示例（`services/api.ts`）**
 
@@ -33,7 +34,9 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token')
-      window.location.href = '/login'
+      if (window.location.pathname !== '/login') {
+        window.location.replace('/login')
+      }
     }
     return Promise.reject(error)
   }
@@ -44,27 +47,41 @@ export default api
 
 ---
 
-## 路由与导航守卫
+## React 路由与访问控制
 
 **规范说明**
 
-- 需要登录才能访问的路由，使用 `meta.requiresAuth`（或项目内等价约定）。
-- 在 **`router/index.ts`** 的 `beforeEach` 中统一校验；未登录跳转登录页。
+- 需要页面路由时，在应用入口包裹 `BrowserRouter`，在 `router/index.tsx` 中声明 `Routes` / `Route`。
+- 有登录需求时，通过 `RequireAuth` 包裹受保护页面；登录状态来自 React state / Context，登录、退出与凭据失效后同步更新。异步恢复状态时先展示加载反馈，再决定是否跳转。
+- 前端控制页面访问体验；接口权限仍由后端校验。无登录需求时不增加认证路由。
 
-**示例（`router/index.ts` 片段）**
+**示例（`frontend/src/router/index.tsx`，路径：`<active_project_path>/frontend/src/router/index.tsx`）**
 
-```typescript
-router.beforeEach((to, from, next) => {
-  const token = localStorage.getItem('token')
-  if (to.meta.requiresAuth && !token) {
-    next('/login')
-  } else {
-    next()
-  }
-})
+```tsx
+import { Navigate, Outlet, Route, Routes } from 'react-router'
+import LoginPage from '../pages/LoginPage'
+import DashboardPage from '../pages/DashboardPage'
+
+type AuthStatus = 'loading' | 'authenticated' | 'anonymous'
+
+function RequireAuth({ status }: { status: AuthStatus }) {
+  if (status === 'loading') return <p role="status">正在恢复登录状态…</p>
+  return status === 'authenticated' ? <Outlet /> : <Navigate to="/login" replace />
+}
+
+export function AppRoutes({ authStatus }: { authStatus: AuthStatus }) {
+  return (
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<RequireAuth status={authStatus} />}>
+        <Route path="/" element={<DashboardPage />} />
+      </Route>
+    </Routes>
+  )
+}
 ```
 
-路由表中为需登录页设置 `meta: { requiresAuth: true }`。
+`authStatus` 由应用的认证 state / Context 传入，不用一次性的存储读取代替可更新状态。上述 Axios 示例以清除本地 token 后整页跳转处理失效；若项目改为站内导航，则同时清理认证 Context。路由用法见 [React Router 官方文档](https://reactrouter.com/start/declarative/routing)。
 
 ---
 
@@ -76,6 +93,7 @@ router.beforeEach((to, from, next) => {
 
 ```typescript
 import { defineConfig, loadEnv } from 'vite'
+import react from '@vitejs/plugin-react'
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
@@ -83,6 +101,7 @@ export default defineConfig(({ mode }) => {
   const wsTarget = backendTarget.replace(/^http/, 'ws')
 
   return {
+    plugins: [react()],
     server: {
       port: 5199,
       proxy: {
@@ -102,6 +121,7 @@ export default defineConfig(({ mode }) => {
 ```
 
 **规则**：
+- 项目开发依赖包含 `@vitejs/plugin-react`，配置保留 `plugins: [react()]`，见 [Vite 官方插件说明](https://vite.dev/plugins/)。
 - WebSocket 路径 `/ws` 必须单独配置 `ws: true` 代理，禁止前端代码直接写 `ws://localhost:<port>`
 - 修改 `vite.config.ts` 或 `.env` 后**必须重启 Vite 开发服务器**才能生效
 - Agent / Tester 启动前端时默认使用：`cd frontend && npm run dev -- --host 127.0.0.1 --port 5199`

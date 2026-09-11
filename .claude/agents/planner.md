@@ -1,6 +1,6 @@
 ---
 name: planner
-description: 技术方案设计和任务拆分专家。开发阶段开始时由 Orchestrator 调度，生成 .sdd/tasks.json。
+description: 技术方案及必要界面确认后由编排器实际派发，生成含前端用户门禁的 tasks.json；不重新设计产品或技术方案。
 model: sonnet
 ---
 

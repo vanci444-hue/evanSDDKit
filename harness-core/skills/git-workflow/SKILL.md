@@ -1,276 +1,42 @@
 ---
 name: git-workflow
-description: SDD V7_2 Git 工作流 Skill。负责项目 Git 仓库的初始化、配置、提交和推送，确保开发过程中的版本控制规范化。
+description: 在用户授权范围内处理目标项目的 Git 初始化、分支、提交、推送与合并；支持独立仓库和 worktree，不作为每个开发任务的开工门禁。
 ---
 
-# Git 工作流 Skill
+# 项目 Git 工作流
 
-你是 SDD V7_2 的 Git 工作流助手。你的职责是确保每个项目在正确的路径下拥有配置正确的 Git 仓库，并在每个功能完成后按规范提交和推送。
+用户要求 Git 操作或当前任务确实依赖版本控制时读取。沿用已确认的项目路径、分支和授权；普通开发不为执行本 Skill 重新检查注册表或要求逐功能确认。Git 操作不更新业务验收状态。
 
----
+## 先核对操作对象
 
-## 适用范围
+在目标工作区执行 `git rev-parse --show-toplevel`、`git status --short`，需要提交/推送时再检查 `git branch --show-current` 和目标 remote。
 
-以下场景调用本 Skill：
+- `--is-inside-work-tree=true` 不证明项目拥有独立仓库：若 Git 根目录是 Harness 或其他父目录，不能在那里暂存项目文件。用户已授权初始化项目时在目标项目创建独立仓库；否则说明该操作所需的缺口。
+- worktree 的 Git 根目录应是当前工作区；可用 `git worktree list --porcelain` 核对归属。detached HEAD 先明确目标分支，不猜 main；创建新分支按用户指定名称，平台已有前缀规则则沿用。
+- 已有未提交改动不要求清空。核对本轮文件与既有改动，同一文件混有其他工作时精确选择本轮差异；无法分清时先保留并说明，不整仓暂存、reset、clean 或自动 stash。
 
-1. **开发启动前**：Developer Agent 开始编码前，检查项目是否已配置 Git 仓库
-2. **功能验收后**：用户确认功能完成，需要提交本次修改时
-3. **项目初始化时**：`scripts/sdd_project.py new` 创建项目后
+## 初始化与配置（仅需要时）
 
----
+创建脚本已完成的 Git 配置不重复执行。需要初始化时在目标目录执行 `git init -b <已确定初始分支>`；新仓库未指定分支时可使用 main 并告知。初始化不自动产生提交或推送。
 
-## Git 仓库检查与初始化
+按项目实际技术栈补 `.gitignore`（路径：`<active_project_path>/.gitignore`），忽略真实 .env、依赖、生成物和运行缓存。使用 `.env*` 时保留 `!.env.example` 等明确空值模板；不默认忽略依赖锁文件。SDD 状态是否版本化沿用项目约定，未约定时不自动提交运行状态。
 
-### 检查当前项目目录
+缺少 Git 身份时由用户提供，不编造。配置 origin 前核对实际值与项目已记录 repo_url；缺失且有已确认 URL 时补配，冲突时说明，不静默 set-url。没有远程仓库不影响本地开发或本地提交；用户授权创建本地项目不等于授权创建远程仓库。
 
-```bash
-git rev-parse --is-inside-work-tree
-```
+## 提交与推送
 
-- **返回 `true`** → Git 仓库已存在，进入「仓库配置检查」
-- **返回错误** → 未初始化，执行「初始化流程」
+1. 按本次或持续授权决定是否提交、是否推送，不在每个功能后弹菜单。用户只要求继续开发时不顺手提交。
+2. 定向查看本轮差异及相关验收；已完成与未验部分如实标记，不能用提交代替验收。草稿/WIP 提交须符合用户要求，不能声称功能通过。
+3. 使用 `git add -- <明确文件>` 或选定差异；检查暂存差异，防止其他人的已暂存内容混入。真实凭据、运行数据和临时证据不入库；不输出敏感值。
+4. 提交信息描述实际变化，可引用任务 ID；多行正文写临时文件后使用 `git commit -F <文件>`。提交后返回 commit、分支、文件范围与验证边界。
+5. 推送前确认实际分支、remote、upstream。已有正确 upstream 时推送该分支；首次推送明确使用 `git push -u <remote> <本地分支>:<远端分支>`。不固定推送 main，也不把远程 URL 存在当作本次推送授权。
 
-### 初始化流程
+## 并行工作区与冲突
 
-1. **初始化仓库**
-   ```bash
-   git init -b main
-   ```
+- 编排器统一分配工作区、分支和允许修改范围。各 Developer 不自行合并他人分支或修改公共工作区；不同 worktree 仍可能修改同一文件。
+- 需要集成时，先确认目标分支与源提交，保留当前改动；在授权范围内选择 merge/cherry-pick/rebase，不能只因任务结束就默认合入 main。
+- 推送被拒先 fetch 指定 remote/分支，查看分歧，再按团队策略处理；不无条件 `pull --rebase origin main`。冲突按双方意图解决，不盲选 ours/theirs；需求冲突只暂停受影响部分。
+- 集成后让开发循环复验受影响接口和跨模块链路，旧分支的 PASS 不直接证明集成成功。
+- 不默认强制推送、删除分支或重写共享历史；这些需要对应明确授权。缺授权或凭据时可继续独立本地工作。
 
-2. **配置 .gitignore**
-
-   检查项目根目录是否已有 `.gitignore`：
-   - 有 → 检查是否包含通用项（`.env*`、`node_modules/`、`__pycache__/`、`.venv/`、`.DS_Store`、`dist/`、`build/`、`*.log`），缺失则补充
-   - 无 → 基于项目类型生成基础 `.gitignore`
-
-   **项目类型判断**：
-   - `frontend/package.json` 存在 → Node/Web 项目：追加 `node_modules/`、`dist/`、`*.log`
-   - `backend/requirements.txt` 或 `pyproject.toml` 存在 → Python 项目：追加 `__pycache__/`、`.venv/`、`*.pyc`
-   - 两者都有 → 合并两套规则
-
-   **基础 .gitignore 模板**（任何项目通用）：
-   ```gitignore
-   # Python
-   __pycache__/
-   *.pyc
-   *.pyo
-   .venv/
-   venv/
-   env/
-   .env
-
-   # macOS
-   .DS_Store
-
-   # Node
-   node_modules/
-   npm-debug.log*
-   package-lock.json
-   yarn.lock
-
-   # IDE
-   .vscode/
-   .idea/
-   *.swp
-
-   # Logs
-   *.log
-   logs/
-
-   # Build
-   dist/
-   build/
-   ```
-
-3. **配置 Git 用户信息（如缺失）**
-   ```bash
-   git config user.name   # 为空则提示用户设置
-   git config user.email  # 为空则提示用户设置
-   ```
-
-4. **初始提交（如仓库为空）**
-   ```bash
-   git add .gitignore
-   git commit -m "chore: init repository with .gitignore"
-   ```
-
-5. **关联远程仓库（如已记录 repo_url）**
-   读取 `.sdd/project.json` 或 `project-registry.json` 中的 `repo_url`（创建项目时用户提供并记录）：
-   - 有值且本地无 origin remote → `git remote add origin <repo_url>`
-   - origin 已存在 → 跳过
-   - 无记录 → 跳过，留待首次推送时按「推送流程·检查 Remote」处理
-
-### 仓库配置检查（已有仓库时）
-
-- 检查是否有 `.gitignore`，没有则创建
-- 检查 Git 用户名/邮箱是否配置
-- 检查当前分支是否为 `main`（不是则提示）
-- 检查是否有未提交的修改（有则提醒用户）
-- 检查 origin remote 是否存在；缺失时读 `.sdd/project.json` / `project-registry.json` 的 `repo_url` 补配（`git remote add origin <repo_url>`）
-
----
-
-## 功能级提交（每功能完成后）
-
-### 提交前检查
-
-1. 检查是否有修改可以提交：
-   ```bash
-   git status
-   ```
-
-2. 如果有未暂存的修改：
-   ```bash
-   git diff --stat
-   ```
-
-### 暂存规则
-
-- **只暂存当前功能相关的文件**
-- 不暂存 `.sdd/` 目录下的状态文件（`tasks.json`、`status.json` 等）——这些属于 SDD 运行时状态，不应提交
-- 不暂存 `.env` 文件（含密钥）
-- 不暂存临时文件（`*.tmp`、`.sdd/tmp/`）
-
-### Commit Message 生成规则
-
-基于本次修改的文件和任务信息生成 commit message：
-
-```
-{type}: {一句话描述}
-
-- 任务: {Task-ID} {任务标题}
-- 修改: {简要说明修改内容}
-```
-
-**type 规范**：
-
-| type | 用途 |
-|------|------|
-| `feat` | 新增功能 |
-| `fix` | 修复 Bug |
-| `refactor` | 重构代码（不改行为）|
-| `chore` | 工具/配置/依赖更新 |
-| `docs` | 文档更新 |
-| `test` | 测试相关 |
-
-**示例**：
-```
-feat: 实现用户登录功能
-
-- 任务: T-002 用户认证功能
-- 修改: 新增 User model, auth service, login route, 前端登录页
-```
-
-### 提交命令
-
-```bash
-git add <功能相关文件列表>
-git commit -m "{type}: {描述}
-
-- 任务: {Task-ID} {标题}
-- 修改: {简述}"
-```
-
----
-
-## 推送流程
-
-### 检查 Remote
-
-```bash
-git remote -v
-```
-
-- **无 remote** → 先读 `.sdd/project.json` / `project-registry.json` 的 `repo_url`：
-  - 有记录 → `git remote add origin <repo_url>`，继续推送
-  - 无记录 → 向用户明确说明并给出两个选项（不得静默失败或空转）：
-    ```text
-    当前项目未配置远程仓库。请选择：
-    1. 提供 GitHub 仓库地址 → 现在配置（git remote add origin <url>，并回写 project.json / project-registry.json 的 repo_url）后推送
-    2. 改选「提交但不推送」→ 本次只提交本地，稍后再配置远程
-    ```
-- **有 remote** → 继续推送
-
-### 推送规则
-
-1. **首次推送新分支**：
-   ```bash
-   git push -u origin main
-   ```
-
-2. **后续推送**：
-   ```bash
-   git push
-   ```
-
-3. **推送冲突处理**：
-   - 先 `git pull --rebase origin main`
-   - 解决冲突后重新推送
-   - 如果冲突复杂，报告用户人工处理
-
----
-
-## 与 SDD 状态机的集成
-
-### Developer 开发前
-
-Developer Agent 在开始编码前必须执行：
-
-1. 检查当前目录是否为 Git 仓库
-2. 如果不是 → 初始化（仅当项目明确需要版本控制时）
-3. 如果有未提交的修改 → 提醒用户（不自动提交，避免混入无关修改）
-
-### 用户验收后推送
-
-编排器在用户门禁确认后，根据用户选择执行：
-
-- 用户说「推送并继续」→ 调用本 Skill 执行提交 + 推送 → 进入下一个功能
-  - 项目无 remote 时按「推送流程·检查 Remote」处理：先查 repo_url 记录补配，仍无则当面问地址或让用户改选「提交但不推送」，不得静默失败
-- 用户说「提交但不推送」→ 执行提交 → 进入下一个功能
-- 用户说「继续」→ 不执行 Git 操作 → 进入下一个功能
-
----
-
-## 禁止事项
-
-- **禁止自动提交 `.sdd/` 状态文件**：`tasks.json`、`status.json` 等属于运行时状态
-- **禁止提交或生成含密钥的可读产物**：真实 Key / Token / Secret 只能存在于 `.env` 等配置文件；如果 `docs/**`、`.sdd/**`、README、报告、日志、经验文件或 JSON 中出现真实值，必须先脱敏再继续
-- **禁止强制推送**：`git push --force` 必须经用户确认
-- **禁止提交未经验证的功能**：必须通过 Tester 验证后才能提交
-- **禁止将 Git 操作结果混入代码输出**：Git 操作结果单独报告
-
----
-
-## 输出格式
-
-### 初始化完成
-
-```
-Git 仓库已就绪
-- 仓库路径: {project-path}
-- 分支: main
-- .gitignore: 已配置
-- 初始提交: {commit-hash}
-- 远程仓库: origin → {repo_url（已记录并配置）| 未配置（repo_url 为 null，首次推送前提供地址执行 git remote add origin <url>）}
-```
-
-### 提交完成
-
-```
-提交成功
-- Commit: {hash}
-- Message: {message}
-- 文件数: {N} 个
-
-如需推送：
-git push -u origin main
-```
-
-### 推送完成
-
-```
-推送成功
-- 分支: main → origin/main
-- Commit: {hash}
-- 远程URL: {url}
-```
+最终报告实际工作区、分支、commit、推送/合并结果及未完成项；不把 Git 结果混成业务测试通过。开发调度与状态仍由 [开发循环](../../protocols/development-loop.md) 维护。
