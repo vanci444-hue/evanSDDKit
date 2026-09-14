@@ -1,4 +1,4 @@
-# SDD V7_2
+# evanSDDKit
 
 SDD 是一个多项目开发工作台，支持 Codex、Claude Code 和 Cursor。核心工作规则集中在 `harness-core/`，业务项目位于 `Projects_Repo/<project-id>/`。
 
